@@ -213,30 +213,9 @@ void * find_fit(size_t asize)
 		//If a block is not allocated, and the size fits
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
         {
-        	void *p = GetPrev(bp);
-        	void *n = GetNext(bp);
-        	if(p==NULL&&n==NULL)//only one element
-        	{
-        		fl=NULL;
-        		return bp;
-        	}
-        	else if(p!=NULL && n==NULL)//at the end of list
-        	{
-        		SetNext(p,n);//set NULL to previousBlock->nextFree
-        	}
-        	else if(p==NULL&&n!=NULL)//at the start of the linked list
-        	{
-        		SetPrev(n,p);//Set nextBlock->prevFree=NULL, meaning it is at the head of the linked list
-        		fl=n;
-    		}
-    		else//if we are in the middle
-    		{
-    			SetNext(p,n);
-    			SetPrev(n,p);
-    		}
-            return bp;
-        }
-    }
+			return bp;        	
+		}
+	}
 
     return NULL;
 }
@@ -250,7 +229,29 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
     /* Get the current block size */
     size_t bsize = GET_SIZE(HDRP(bp));
 
-    PUT(HDRP(bp), PACK(bsize, 1));
+	void *p = GetPrev(bp);
+  	void *n = GetNext(bp);
+   	
+	if(p==NULL&&n==NULL)//only one element
+	{
+		fl=NULL;
+    }
+    else if(p!=NULL && n==NULL)//at the end of list
+    {
+    	SetNext(p,n);//set NULL to previousBlock->nextFree
+    }
+    else if(p==NULL&&n!=NULL)//at the start of the linked list
+    {
+    	SetPrev(n,p);//Set nextBlock->prevFree=NULL, meaning it is at the head of the linked list
+    	fl=n;
+    }
+    else//if we are in the middle
+    {
+    	SetNext(p,n);
+    	SetPrev(n,p);
+    }
+    
+	PUT(HDRP(bp), PACK(bsize, 1));
     PUT(FTRP(bp), PACK(bsize, 1));
 }
 
