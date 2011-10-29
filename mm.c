@@ -80,20 +80,27 @@ bp: pointer
 Get returns value*/
 #define GetNext(bp) GET(NEXTP(bp))
 #define GetPrev(bp) GET(PREVP(bp))
-#define SetNext(bp,val) PUT(NEXTP(bp),val)
-#define SetPrev(bp,val) PUT(PREVP(bp),val)
+#define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
+#define SetPrev(bp,val) PUT(PREVP(bp),(size_t)/val)
 
 
 void* heap_listp = NULL;
 void* fl=NULL;
-#define DEBUG 0
+#define DEBUG 1
 int counter;
-
 
 
 void P(char *c)
 {
-    //printf("%s",c); fflush(stdout);
+    if(DEBUG) {printf("%s",c); fflush(stdout);}
+}
+void D(char *c)
+{
+    printf("%s",c); fflush(stdout);
+}
+void C(char*c)
+{
+	printf(" (%s%i)",c,counter); fflush(stdout); counter++;
 }
 /**********************************************************
  * mm_init
@@ -102,24 +109,17 @@ void P(char *c)
  **********************************************************/
  int mm_init(void)
  {
-    /*
-     if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
+ 
+      if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
          return -1;
-     PUT(heap_listp, 0);                         // alignment padding 
+     PUT(heap_listp, 0);                         // alignment padding
      PUT(heap_listp+WSIZE, PACK(OVERHEAD, 1));   // prologue header
      PUT(heap_listp+DSIZE, PACK(OVERHEAD, 1));   // prologue footer
      PUT(heap_listp+WSIZE+DSIZE, PACK(0, 1));    // epilogue header
-     heap_listp += DSIZE;
-	PUT(heap_listp,PACK(4,1));
-	PUT(heap_listp+4,0);
-	PUT(heap_listp+8,0);
-	PUT(heap_listp+12,PACK(4,1));
-	heap_listp+=16;*/
-	//printf("h"); fflush(stdout);printf("fl: %u next: %u\n",fl,GetNext(fl)); fflush(stdout);	printf("i"); fflush(stdout);
-	//printf("fl: %u\n",fl); fflush(stdout);
-	fl=NULL;
-	counter=4;
-     return 0;
+
+    fl=NULL;
+    counter = 5;
+    return 0;
  }
  
 /**********************************************************
@@ -130,37 +130,115 @@ void P(char *c)
  * - the previous block is available for coalescing
  * - both neighbours are available for coalescing
  **********************************************************/
+void addtolist(void *bp)
+{
+	 if(fl==NULL)//If free list empty
+    {
+
+        fl=bp;//Add block to freed list
+		SetNext(bp,NULL);//Set next to null
+	//	printf("\n%u has now set next to %u\n",bp,GetNext(bp));P("");
+	    SetPrev(bp,NULL);//Set prev to null
+    }
+    else//If list is not empty
+    {
+    	//Add this block to the head of the list
+    	SetNext(bp,fl);//Set next to whatever was at the head
+    	SetPrev(bp,NULL);//Set prev to null
+    	//Modify former head block to be add bp as prev
+    	SetPrev(fl,bp);
+    	//Set this block as new head
+    	fl=bp;
+    }
+}
 void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
-
-    if (prev_alloc && next_alloc) {       /* Case 1 */
+   if (prev_alloc && next_alloc) /*case 1 faFaf */
+	{
+		P("!1!");
+		if(GET_ALLOC(HDRP(bp))==0)
+			{addtolist(bp);P("a");}
         return bp;
-    }
-
-    else if (prev_alloc && !next_alloc) { /* Case 2 */
+	}
+    else if (prev_alloc &&!next_alloc)
+    { /* Case 2 faFfaf*/
+	    P("!2!");
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
+
+        void * nbp=NEXT_BLKP(bp);
+        
+        if(nbp==fl)
+        	fl=bp;
+        	
+        SetNext(bp,GetNext(nbp));
+        SetPrev(bp,GetPrev(nbp));
+        if(GetNext(nbp)!=NULL)
+	        SetPrev(GetNext(nbp),bp);
+    	if(GetPrev(nbp)!=NULL)
+    		SetNext(GetPrev(nbp),bp);
+		P("end2");
         return (bp);
     }
 
-    else if (!prev_alloc && next_alloc) { /* Case 3 */
+    else if ( next_alloc&&!prev_alloc) { /* Case 3 fafFaf*/
+    P("!3!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        return (PREV_BLKP(bp));
+        
+        return (PREV_BLKP(bp));//should be returning find fit
     }
 
-    else {            /* Case 4 */
+    else { /* Case 4 fafFfaf */
+    P("!4!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)))  +
-            GET_SIZE(FTRP(NEXT_BLKP(bp)))  ;
+        	GET_SIZE(FTRP(NEXT_BLKP(bp)))  ;
         PUT(HDRP(PREV_BLKP(bp)), PACK(size,0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size,0));
+       /*printf("1\n%u\n",GetPrev(bp)); fflush(stdout);
+        printf("2\n%u\n",GetNext(bp)); fflush(stdout);
+        printf("3\n%u\n",GetNext(GetNext(bp))); fflush(stdout);
+		if(GetPrev(bp)!=NULL)
+	        SetNext(GetPrev(bp),GetNext(GetNext(bp)));
+        if(GetNext(GetNext(bp))!=NULL)
+	        SetPrev(GetNext(GetNext(bp)),GetPrev(bp));*/
+	    void * nbp=NEXT_BLKP(bp);
+	    void * pbp=PREV_BLKP(bp);
+	    
+	    if(nbp==fl)
+	    {
+	    	SetPrev(pbp,NULL);
+	    	fl=pbp;
+	    }
+	    else if(GetNext(nbp)==NULL)
+	    {
+	    	SetNext(pbp,NULL);
+	    }
+	    else
+	    {
+	    	SetNext(GetPrev(pbp),GetNext(pbp));
+	    	SetPrev(GetNext(pbp),GetPrev(pbp));
+	    }
+	    
+	    
         return (PREV_BLKP(bp));
     }
+    
+}
+
+
+void *removend(void*bp)
+{
+	if(bp==fl)
+		fl=NULL;
+	else
+		SetNext(GetPrev(bp),NULL);
+	return bp;
 }
 
 /**********************************************************
@@ -173,7 +251,7 @@ void *extend_heap(size_t words)
 {
     char *bp;
     size_t size;
-
+//P("x");
     /* Allocate an even number of words to maintain alignments */
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
     if ( (bp = mem_sbrk(size)) == NULL )
@@ -183,9 +261,16 @@ void *extend_heap(size_t words)
     PUT(HDRP(bp), PACK(size, 0));                // free block header
     PUT(FTRP(bp), PACK(size, 0));                // free block footer
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));        // new epilogue header
-
+//P("z");
     /* Coalesce if the previous block was free */
-    return bp;//coalesce(bp);
+    /*if(GET_ALLOC(FTRP(PREV_BLKP(bp)))==0)
+	    {
+	    	return removend(coalesce(bp));//bad algorithm, should search again
+	    	//instead of just removing end from free list
+	    }*/
+	//return coalesce(bp);
+//P("s");
+	return bp;
 }
 
 
@@ -198,21 +283,14 @@ void *extend_heap(size_t words)
 void * find_fit(size_t asize) 
 {
     void *bp;
-/*
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
-    {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-        {
-            return bp;
-        }
-    }
-    return NULL;*/
+//P("find_fit:begin");
     for (bp = fl; bp!=NULL; bp = GetNext(bp))//Go through the free list
     {
-    	//printf("%u has next set to %u\n",bp,GetNext(bp));P("");
+    	D("l");
 		//If a block is not allocated, and the size fits
         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
         {
+        	D("h");
         	void *p = GetPrev(bp);
         	void *n = GetNext(bp);
         	if(p==NULL&&n==NULL)//only one element
@@ -234,10 +312,11 @@ void * find_fit(size_t asize)
     			SetNext(p,n);
     			SetPrev(n,p);
     		}
+    		//P("find_fit:successful");
             return bp;
         }
     }
-
+//P("find_fit:unsuccessful");
     return NULL;
 }
 
@@ -248,10 +327,13 @@ void * find_fit(size_t asize)
 void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 128
 {
     /* Get the current block size */
+    //P("place:begin");
     size_t bsize = GET_SIZE(HDRP(bp));
 
     PUT(HDRP(bp), PACK(bsize, 1));
     PUT(FTRP(bp), PACK(bsize, 1));
+    //printf(":%i",GET_ALLOC(HDRP(bp)));P("");
+    //P("place:end");
 }
 
 /**********************************************************
@@ -260,30 +342,13 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
  **********************************************************/
 void mm_free(void *bp)
 {
-    if(fl==NULL)//If free list empty
-    {
-
-        fl=bp;//Add block to freed list
-		SetNext(bp,NULL);//Set next to null
-	//	printf("\n%u has now set next to %u\n",bp,GetNext(bp));P("");
-	    SetPrev(bp,NULL);//Set prev to null
-    }
-    else//If list is full
-    {
-    	//Add this block to the head of the list
-    	SetNext(bp,fl);//Set next to whatever was at the head
-    	SetPrev(bp,NULL);//Set prev to null
-    	//Modify former head block to be add bp as prev
-    	SetPrev(fl,bp);
-    	//Set this block as new head
-    	fl=bp;
-    }
-    
+	C("f");
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size,0));
     PUT(FTRP(bp), PACK(size,0));
-//    coalesce(bp);
-
+    
+    //addtolist(bp);
+    coalesce(bp);
 }
 
 
@@ -297,10 +362,10 @@ void mm_free(void *bp)
  **********************************************************/
 void *mm_malloc(size_t size)
 {
+	C("m");
     size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
-	P("m");if(DEBUG) {printf("%i ",counter);counter++;}
     /* Ignore spurious requests */
     if (size <= 0)
         return NULL;
@@ -310,21 +375,22 @@ void *mm_malloc(size_t size)
         asize = DSIZE + OVERHEAD;
     else
         asize = DSIZE * ((size + (OVERHEAD) + (DSIZE-1))/ DSIZE);
-
+//P("a");
     /* Search the free list for a fit */
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
         return bp;
     }
-
+//P("b");
     /* No fit found. Get more memory and place the block */
     extendsize = MAX(asize, CHUNKSIZE);//this is terrible
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
         {
             return NULL;
         }
+//P("c");
     place(bp, asize);//horrible
-	//printf("m:%u\n",(unsigned int)bp); P("");
+//P("d");
     return bp;
 }
 
