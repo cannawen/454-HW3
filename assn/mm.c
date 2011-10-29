@@ -91,11 +91,26 @@ void* fl=NULL;
 #define DEBUG 1
 int counter;
 
+void heap_chekka(void* l);
 
 void P(char *c)
 {
-	printf("%s",c); fflush(stdout);
+	//if(DEBUG) {printf("%s",c);}
+	fflush(stdout);
 }
+#define RUN_HEAP_CHEKKA_ON_INSN 5000
+void C(char* c)
+{
+	if(DEBUG) {
+		//printf("(%s%i)",c,counter);
+		//P("");
+		counter++;
+		if(counter==RUN_HEAP_CHEKKA_ON_INSN)
+			heap_chekka(fl);
+			
+	}
+}
+
 /**********************************************************
  * mm_init
  * Initialize the heap, including "allocation" of the
@@ -179,7 +194,6 @@ void *coalesce(void *bp)
 	        SetPrev(GetNext(nbp),bp);
     	if(GetPrev(nbp)!=NULL)
     		SetNext(GetPrev(nbp),bp);
-		P("end2");
         return (bp);
     }
 
@@ -358,7 +372,7 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
-	P("f");
+	C("f");
 	//add_to_free_list(bp);
     mark_free(bp);
 	// coalesce calls add_to_free_list
@@ -378,10 +392,10 @@ void mm_free(void *bp)
  **********************************************************/
 void *mm_malloc(size_t size)
 {
+	C("m");
     size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
-	P("m");if(DEBUG) {printf("%i ",counter);counter++;}
     /* Ignore spurious requests */
     if (size <= 0)
         return NULL;
@@ -416,7 +430,7 @@ void *mm_malloc(size_t size)
  *********************************************************/
 void *mm_realloc(void *ptr, size_t size)
 {
-    P("realloc\n");
+    C("r");
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -432,4 +446,113 @@ void *mm_realloc(void *ptr, size_t size)
     mm_free(oldptr);
     return newptr;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//check if bp is within bounds of heap
+int freelistbounds_check(void *l)
+{
+	void * bp;
+	void *start = mem_heap_lo();
+	void *end = mem_heap_hi()-3;//points to last word
+	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	{
+		// is out of bounds
+		if( ( (bp>=start) && (bp <=end) ) ==0 )
+			return 0;//you done something wrong
+	}
+	return 1;
+}
+//Check that all blocks in freelist are in fact free,
+int freelist_check(void* l)
+{
+	void * bp;
+	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	{
+		//if this block is allocated
+		if(GET_ALLOC(HDRP(bp))==1)
+			return 0;//you done something wrong
+	}
+	return 1;
+}
+
+//All blocks are coalesced properly
+int coalescing_check(void* l)
+{
+	void * bp;
+	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	{
+		//if you have free blocks next to you
+		if(GET_ALLOC(NEXT_BLKP(bp))== 0 || GET_ALLOC(PREV_BLKP(bp))== 0)
+			return 0;
+	}
+	return 1;
+}
+
+//Find if this bp is in free list
+int find_check(void*p,void *l)
+{
+	void * bp;
+	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	{
+		if(bp==p)//if we have found the thing
+			return 0;//you done something wrong
+	}
+	return 1;
+}
+
+//Check if all free blocks are in free list
+int allfreeinfl_check(void *l)
+{
+	void *bp = mem_heap_lo();
+	void *end = mem_heap_hi()-3;//points to last word
+	for(;bp<end;bp+=GET_SIZE(HDRP(bp)))
+	{
+		//if the block is not allocated, but you cannot find it in the free list
+		if(GET_ALLOC(HDRP(bp))==0 && find_check(bp,fl)==0)
+			return 0;
+	}
+	return 1;
+}
+
+void F(char*c,int b)
+{
+	printf("\nCHECK %s: %i",c,b); P("");
+}
+void heap_chekka(void* l)
+{
+	F("All blocks in fl are valid",	freelistbounds_check(l));
+	F("All blocks in fl are free",freelist_check(l));
+	F("All blocks in fl are properly coalesced",coalescing_check(l));
+	F("All free blocks are in fl",allfreeinfl_check(l));
+	
+}
+
+
+
+
+
+
+
 
