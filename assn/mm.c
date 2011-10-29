@@ -93,7 +93,7 @@ int counter;
 
 void P(char *c)
 {
-    //printf("%s",c); fflush(stdout);
+//	printf("%s",c); fflush(stdout);
 }
 /**********************************************************
  * mm_init
@@ -102,14 +102,14 @@ void P(char *c)
  **********************************************************/
  int mm_init(void)
  {
-    /*
+    
      if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
          return -1;
      PUT(heap_listp, 0);                         // alignment padding 
      PUT(heap_listp+WSIZE, PACK(OVERHEAD, 1));   // prologue header
      PUT(heap_listp+DSIZE, PACK(OVERHEAD, 1));   // prologue footer
      PUT(heap_listp+WSIZE+DSIZE, PACK(0, 1));    // epilogue header
-     heap_listp += DSIZE;
+     /*heap_listp += DSIZE;
 	PUT(heap_listp,PACK(4,1));
 	PUT(heap_listp+4,0);
 	PUT(heap_listp+8,0);
@@ -198,6 +198,7 @@ void *extend_heap(size_t words)
 void * find_fit(size_t asize) 
 {
     void *bp;
+	
 /*
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
     {
@@ -211,8 +212,9 @@ void * find_fit(size_t asize)
     {
     	//printf("%u has next set to %u\n",bp,GetNext(bp));P("");
 		//If a block is not allocated, and the size fits
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
+        if ((asize <= GET_SIZE(HDRP(bp))))
         {
+			assert(!GET_ALLOC(bp));
 			return bp;        	
 		}
 	}
@@ -231,7 +233,7 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
 
 	void *p = GetPrev(bp);
   	void *n = GetNext(bp);
-   	
+	
 	if(p==NULL&&n==NULL)//only one element
 	{
 		fl=NULL;
@@ -255,11 +257,7 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
     PUT(FTRP(bp), PACK(bsize, 1));
 }
 
-/**********************************************************
- * mm_free
- * Free the block and coalesce with neighbouring blocks
- **********************************************************/
-void mm_free(void *bp)
+void add_to_free_list(void *bp)
 {
     if(fl==NULL)//If free list empty
     {
@@ -283,8 +281,16 @@ void mm_free(void *bp)
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size,0));
     PUT(FTRP(bp), PACK(size,0));
-//    coalesce(bp);
+}
 
+/**********************************************************
+ * mm_free
+ * Free the block and coalesce with neighbouring blocks
+ **********************************************************/
+void mm_free(void *bp)
+{
+	add_to_free_list(bp);
+//    coalesce(bp);
 }
 
 
@@ -321,9 +327,10 @@ void *mm_malloc(size_t size)
     /* No fit found. Get more memory and place the block */
     extendsize = MAX(asize, CHUNKSIZE);//this is terrible
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
-        {
-            return NULL;
-        }
+    {
+		return NULL;
+    }
+	add_to_free_list(bp);
     place(bp, asize);//horrible
 	//printf("m:%u\n",(unsigned int)bp); P("");
     return bp;
