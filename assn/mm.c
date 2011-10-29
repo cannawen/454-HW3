@@ -185,7 +185,7 @@ void *extend_heap(size_t words)
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));        // new epilogue header
 
     /* Coalesce if the previous block was free */
-    return bp;//coalesce(bp);
+    return coalesce(bp);
 }
 
 
@@ -290,7 +290,7 @@ void add_to_free_list(void *bp)
 void mm_free(void *bp)
 {
 	add_to_free_list(bp);
-//    coalesce(bp);
+    coalesce(bp);
 }
 
 
