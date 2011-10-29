@@ -81,7 +81,7 @@ Get returns value*/
 #define GetNext(bp) GET(NEXTP(bp))
 #define GetPrev(bp) GET(PREVP(bp))
 #define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
-#define SetPrev(bp,val) PUT(PREVP(bp),(size_t)/val)
+#define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
 
 void* heap_listp = NULL;
