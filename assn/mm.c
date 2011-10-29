@@ -309,7 +309,7 @@ void *mm_malloc(size_t size)
     if (size <= DSIZE)
         asize = DSIZE + OVERHEAD;
     else
-        asize = DSIZE * ((size + (OVERHEAD) + (DSIZE-1))/ DSIZE);
+        asize = ALIGNMENT * ((size + (OVERHEAD) + (ALIGNMENT-1))/ ALIGNMENT);
 
     /* Search the free list for a fit */
     if ((bp = find_fit(asize)) != NULL) {
