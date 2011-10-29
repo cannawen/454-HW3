@@ -29,9 +29,9 @@ team_t team = {
     /* First member's email address */
     "canna.wen@utoronto.ca",
     /* Second member's full name (leave blank if none) */
-    "",
+    "Joseph Garvey",
     /* Second member's email address (leave blank if none) */
-    ""
+    "joe.garvey@utoronto.ca"
 };
 
 /*************************************************************************
