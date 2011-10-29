@@ -115,17 +115,11 @@ void P(char *c)
      return 0;
  }
  
-/**********************************************************
- * coalesce
- * Covers the 4 cases discussed in the text:
- * - both neighbours are allocated
- * - the next block is available for coalescing
- * - the previous block is available for coalescing
- * - both neighbours are available for coalescing
- **********************************************************/
-void addtolist(void *bp)
+// Assumes the block has already been marked as free
+// and that it's header and footer are set up appropriately
+void add_to_free_list(void *bp)
 {
-	 if(fl==NULL)//If free list empty
+    if(fl==NULL)//If free list empty
     {
 
         fl=bp;//Add block to freed list
@@ -133,7 +127,7 @@ void addtolist(void *bp)
 	//	printf("\n%u has now set next to %u\n",bp,GetNext(bp));P("");
 	    SetPrev(bp,NULL);//Set prev to null
     }
-    else//If list is not empty
+    else//If list is full
     {
     	//Add this block to the head of the list
     	SetNext(bp,fl);//Set next to whatever was at the head
@@ -144,27 +138,33 @@ void addtolist(void *bp)
     	fl=bp;
     }
 }
+
+/**********************************************************
+ * coalesce
+ * Covers the 4 cases discussed in the text:
+ * - both neighbours are allocated
+ * - the next block is available for coalescing
+ * - the previous block is available for coalescing
+ * - both neighbours are available for coalescing
+ **********************************************************/
 void *coalesce(void *bp)
 {
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
-   if (prev_alloc && next_alloc) /*case 1 faFaf */
+	if (prev_alloc && next_alloc) /*case 1 faFaf */
 	{
-		P("!1!");
-		if(GET_ALLOC(HDRP(bp))==0)
-			{addtolist(bp);P("a");}
-        return bp;
+    	add_to_free_list(bp);
+		return bp;
 	}
     else if (prev_alloc &&!next_alloc)
     { /* Case 2 faFfaf*/
 	    P("!2!");
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        void * nbp=NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
 
-        void * nbp=NEXT_BLKP(bp);
-        
         if(nbp==fl)
         	fl=bp;
         	
@@ -184,15 +184,17 @@ void *coalesce(void *bp)
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         
-        return (PREV_BLKP(bp));//should be returning find fit
+        return (PREV_BLKP(bp));
     }
 
     else { /* Case 4 fafFfaf */
-    P("!4!");
+		P("!4!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)))  +
         	GET_SIZE(FTRP(NEXT_BLKP(bp)))  ;
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size,0));
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size,0));
+	    void * nbp=NEXT_BLKP(bp);
+	    void * pbp=PREV_BLKP(bp);
+        PUT(HDRP(pbp), PACK(size,0));
+        PUT(FTRP(nbp), PACK(size,0));
        /*printf("1\n%u\n",GetPrev(bp)); fflush(stdout);
         printf("2\n%u\n",GetNext(bp)); fflush(stdout);
         printf("3\n%u\n",GetNext(GetNext(bp))); fflush(stdout);
@@ -200,28 +202,26 @@ void *coalesce(void *bp)
 	        SetNext(GetPrev(bp),GetNext(GetNext(bp)));
         if(GetNext(GetNext(bp))!=NULL)
 	        SetPrev(GetNext(GetNext(bp)),GetPrev(bp));*/
-	    void * nbp=NEXT_BLKP(bp);
-	    void * pbp=PREV_BLKP(bp);
-	    
-	    if(nbp==fl)
-	    {
-	    	SetPrev(pbp,NULL);
-	    	fl=pbp;
-	    }
-	    else if(GetNext(nbp)==NULL)
-	    {
-	    	SetNext(pbp,NULL);
-	    }
-	    else
-	    {
-	    	SetNext(GetPrev(pbp),GetNext(pbp));
-	    	SetPrev(GetNext(pbp),GetPrev(pbp));
-	    }
-	    
-	    
-        return (PREV_BLKP(bp));
+	   
+		void * y = GetPrev(nbp);
+		void * z = GetNext(nbp);
+
+		if (y == NULL)
+		{
+			assert(nbp ==fl);
+			fl = z;
+		}
+		else
+		{
+			SetNext(y, z);	
+		}
+		if (z != NULL)
+		{
+			SetPrev(z, y);
+		}
+ 
+        return pbp;
     }
-    
 }
 
 
@@ -255,7 +255,7 @@ void *extend_heap(size_t words)
     PUT(FTRP(bp), PACK(size, 0));                // free block footer
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));        // new epilogue header
 
-    /* Coalesce if the previous block was free */
+	/* Coalesce if the previous block was free */
     return coalesce(bp);
 }
 
@@ -328,27 +328,10 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
     PUT(FTRP(bp), PACK(bsize, 1));
 }
 
-void add_to_free_list(void *bp)
-{
-    if(fl==NULL)//If free list empty
-    {
 
-        fl=bp;//Add block to freed list
-		SetNext(bp,NULL);//Set next to null
-	//	printf("\n%u has now set next to %u\n",bp,GetNext(bp));P("");
-	    SetPrev(bp,NULL);//Set prev to null
-    }
-    else//If list is full
-    {
-    	//Add this block to the head of the list
-    	SetNext(bp,fl);//Set next to whatever was at the head
-    	SetPrev(bp,NULL);//Set prev to null
-    	//Modify former head block to be add bp as prev
-    	SetPrev(fl,bp);
-    	//Set this block as new head
-    	fl=bp;
-    }
-    
+// Mark the block as free and set up header and footer
+void mark_free(void *bp)
+{
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size,0));
     PUT(FTRP(bp), PACK(size,0));
@@ -360,8 +343,12 @@ void add_to_free_list(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
-	add_to_free_list(bp);
-    coalesce(bp);
+	//add_to_free_list(bp);
+    mark_free(bp);
+	// coalesce calls add_to_free_list
+	
+	//add_to_free_list(bp);
+	coalesce(bp);
 }
 
 
@@ -397,11 +384,11 @@ void *mm_malloc(size_t size)
 
     /* No fit found. Get more memory and place the block */
     extendsize = MAX(asize, CHUNKSIZE);//this is terrible
-    if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
+    // NOTE: extend_heap adds the new space to the free list
+	if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
     {
 		return NULL;
     }
-	add_to_free_list(bp);
     place(bp, asize);//horrible
 	//printf("m:%u\n",(unsigned int)bp); P("");
     return bp;
