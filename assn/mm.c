@@ -78,10 +78,10 @@ team_t team = {
 /*Getting and setting values of next and previous locations
 bp: pointer
 Get returns value*/
-#define GetNext(bp) GET(NEXTP(bp))
-#define GetPrev(bp) GET(PREVP(bp))
-#define SetNext(bp,val) PUT(NEXTP(bp),val)
-#define SetPrev(bp,val) PUT(PREVP(bp),val)
+#define GetNext(bp) (void *)(GET(NEXTP(bp)))
+#define GetPrev(bp) (void *)(GET(PREVP(bp)))
+#define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
+#define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
 
 void* heap_listp = NULL;
