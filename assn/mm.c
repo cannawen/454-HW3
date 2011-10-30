@@ -93,6 +93,7 @@ void* fl=NULL;
 #define SANITY_CHECK 1
 int counter;
 int itr=0;
+int num[NUM_FREE_LISTS];//NUM_FREE_LISTS
 
 void F(char*c,int b);
 void heapChekka(void* l);
@@ -105,7 +106,7 @@ int searchlist_check(void*p,void **l);
 int flAllFreeCheck(void* l);
 int flPointerBoundsCheck(void *l);
 int flSizeRangeCheck(void *l, int min, int max);
-
+int* flCountsCheck(void ** l);
 
 void P(char *c)
 {
@@ -666,6 +667,21 @@ int flSizeRangeCheck(void *l, int min, int max)
 	return 1;
 }
 
+//Count how many elements are in an array of freelists.
+int* flCountsCheck(void ** l)
+{
+	int i;
+	void * bp;
+	for(i=0;i<NUM_FREE_LISTS;i++)
+	{
+		num[i]=0;
+		for(bp=l[i];bp!=NULL;bp=GetNext(bp))
+		{
+			num[i]++;
+		}
+	}
+	return num;
+}
 
 //print one check
 void printCheck(char*c,int b)
