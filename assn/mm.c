@@ -86,6 +86,7 @@ Get returns value*/
 
 #define RUN_HEAP_CHEKKA_ON_INSN 10
 #define DEBUG 0
+#define NUM_FREE_LISTS 7
 
 
 /*************************************************************************
@@ -94,6 +95,8 @@ Get returns value*/
 *************************************************************************/
 void* epilogue = NULL;
 void* fl=NULL;
+void* fls[NUM_FREE_LISTS];
+size_t limits[NUM_FREE_LISTS];
 int counter;
 int itr=0;
 
@@ -147,6 +150,8 @@ void C(char* c)
  **********************************************************/
  int mm_init(void)
  {
+	int list;
+	size_t limit;
 	void* heap_listp = NULL;
     
 	if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
@@ -157,19 +162,42 @@ void C(char* c)
 	PUT(heap_listp+WSIZE+DSIZE, PACK(0, 1, 1));    // epilogue header
 	
 	epilogue = heap_listp+WSIZE+DSIZE+WSIZE;
-	fl=NULL;
+	//fl=NULL;
+	limit = 16;
+	for (list = 0; list < NUM_FREE_LISTS; ++list)
+	{
+		fls[list] = NULL;
+		limits[list] = limit + ALLOC_OVERHEAD;
+		limit = limit << 1;
+	}
 	counter=0;
-     return 0;
+	return 0;
  }
  
 // Assumes the block has already been marked as free
 // and that it's header and footer are set up appropriately
 void add_to_free_list(void *bp)
 {
-    if(fl==NULL)//If free list empty
+	int list;
+	void *flist;
+	size_t size = GET_SIZE(HDRP(bp));
+
+	// Determine which free list this block belongs in
+	for (list = 0; list < NUM_FREE_LISTS; ++list)
+	{
+		if (size <= limits[list])
+			break;
+	}
+	// The last list hold everything larger than limits[NUM_FREE_LISTS - 2]
+	if (list == NUM_FREE_LISTS)
+		--list;
+	
+	flist = fls[list];
+
+	if(flist==NULL)//If free list empty
     {
 
-        fl=bp;//Add block to freed list
+        flist=bp;//Add block to freed list
 		SetNext(bp,NULL);//Set next to null
 	//	printf("\n%u has now set next to %u\n",bp,GetNext(bp));P("");
 	    SetPrev(bp,NULL);//Set prev to null
@@ -177,13 +205,44 @@ void add_to_free_list(void *bp)
     else//If list is full
     {
     	//Add this block to the head of the list
-    	SetNext(bp,fl);//Set next to whatever was at the head
+    	SetNext(bp,flist);//Set next to whatever was at the head
     	SetPrev(bp,NULL);//Set prev to null
     	//Modify former head block to be add bp as prev
-    	SetPrev(fl,bp);
+    	SetPrev(flist,bp);
     	//Set this block as new head
-    	fl=bp;
+    	flist=bp;
     }
+}
+
+void remove_from_free_list(void* bp)
+{
+	// Remove the next block from its free list
+	void * y = GetPrev(bp);
+	void * z = GetNext(bp);
+	if (y == NULL)
+	{
+		// This was the first block in its free list
+		// Determine which list that was
+		int i, list;
+		list = -1;
+		for (i = 0; i < NUM_FREE_LISTS; ++i)
+		{
+			if (fls[i] == bp)
+			{
+				list = i;
+			}
+		}
+		assert(list != -1);
+		fls[list] = z;
+	}
+	else
+	{
+		SetNext(y, z);	
+	}
+	if (z != NULL)
+	{
+		SetPrev(z, y);
+	}
 }
 
 /**********************************************************
@@ -198,44 +257,34 @@ void *coalesce(void *bp)
 {
 	unsigned int prev_alloc = GET_PREV(HDRP(bp));
 	size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
-    size_t size = GET_SIZE(HDRP(bp));
+	size_t size = GET_SIZE(HDRP(bp));
 	
 	if (prev_alloc && next_alloc) /*case 1 faFaf */
 	{
-	    P("!1!");
-    	add_to_free_list(bp);
-		return bp;
+		P("!1!");
 	}
-    else if (prev_alloc &&!next_alloc)
+	else if (prev_alloc &&!next_alloc)
     { /* Case 2 faFfaf*/
-	    P("!2!");
+		P("!2!");
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         void * nbp=NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(size, 0, 1));
         PUT(FTRP(bp), PACK(size, 0, 1));
 
-        if(nbp==fl)
-        	fl=bp;
-        	
-        SetNext(bp,GetNext(nbp));
-        SetPrev(bp,GetPrev(nbp));
-        if(GetNext(nbp)!=NULL)
-	        SetPrev(GetNext(nbp),bp);
-    	if(GetPrev(nbp)!=NULL)
-    		SetNext(GetPrev(nbp),bp);
-        return (bp);
+		remove_from_free_list(nbp);
     }
-
-    else if ( next_alloc&&!prev_alloc) { /* Case 3 fafFaf*/
-    P("!3!");
+    else if ( next_alloc&&!prev_alloc)
+	{ /* Case 3 fafFaf*/
+		P("!3!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0, 1));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0, 1));
-        
-        return (PREV_BLKP(bp));
+       
+		remove_from_free_list(PREV_BLKP(bp)); 
+		bp = PREV_BLKP(bp);
     }
-
-    else { /* Case 4 fafFfaf */
+    else
+	{ /* Case 4 fafFfaf */
 		P("!4!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)))  +
         	GET_SIZE(FTRP(NEXT_BLKP(bp)))  ;
@@ -243,33 +292,14 @@ void *coalesce(void *bp)
 	    void * pbp=PREV_BLKP(bp);
         PUT(HDRP(pbp), PACK(size,0, 1));
         PUT(FTRP(nbp), PACK(size,0, 1));
-       /*printf("1\n%u\n",GetPrev(bp)); fflush(stdout);
-        printf("2\n%u\n",GetNext(bp)); fflush(stdout);
-        printf("3\n%u\n",GetNext(GetNext(bp))); fflush(stdout);
-		if(GetPrev(bp)!=NULL)
-	        SetNext(GetPrev(bp),GetNext(GetNext(bp)));
-        if(GetNext(GetNext(bp))!=NULL)
-	        SetPrev(GetNext(GetNext(bp)),GetPrev(bp));*/
-	   
-		void * y = GetPrev(nbp);
-		void * z = GetNext(nbp);
-
-		if (y == NULL)
-		{
-			assert(nbp ==fl);
-			fl = z;
-		}
-		else
-		{
-			SetNext(y, z);	
-		}
-		if (z != NULL)
-		{
-			SetPrev(z, y);
-		}
- 
-        return pbp;
+	  
+		remove_from_free_list(nbp);
+		remove_from_free_list(pbp);
+		bp = pbp;
     }
+    
+	add_to_free_list(bp);
+	return bp;
 }
 
 
@@ -295,7 +325,8 @@ void *extend_heap(size_t words)
 
     /* Allocate an even number of words to maintain alignments */
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
-    if ( (bp = mem_sbrk(size)) == NULL )
+    // TODO: implement allocating a power of 2
+	if ( (bp = mem_sbrk(size)) == NULL )
         return NULL;
 
     /* Initialize free block header/footer and the epilogue header */
@@ -320,19 +351,20 @@ void *extend_heap(size_t words)
 void * find_fit(size_t asize) 
 {
     void *bp;
+	int list;
 	
-/*
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+	// Determine which free list to check
+	for (list = 0; list < NUM_FREE_LISTS; ++list)
+	{
+		if (asize <= limits[list])
+			break;
+	}
+	// The last list hold everything larger than limits[NUM_FREE_LISTS - 2]
+	if (list == NUM_FREE_LISTS)
+		--list;
+
+    for (bp = fls[list]; bp!=NULL; bp = GetNext(bp))//Go through the free list
     {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-        {
-            return bp;
-        }
-    }
-    return NULL;*/
-    for (bp = fl; bp!=NULL; bp = GetNext(bp))//Go through the free list
-    {
-    	//printf("%u has next set to %u\n",bp,GetNext(bp));P("");
 		//If a block is not allocated, and the size fits
         if ((asize <= GET_SIZE(HDRP(bp))))
         {
@@ -421,11 +453,8 @@ void mm_free(void *bp)
 		assert(allfreeinfl_check(fl));
 	}
 	C("f");
-	//add_to_free_list(bp);
     mark_free(bp);
 	// coalesce calls add_to_free_list
-	
-	//add_to_free_list(bp);
 	coalesce(bp);
 }
 
