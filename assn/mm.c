@@ -84,8 +84,8 @@ Get returns value*/
 #define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
-#define RUN_ON_INSN 1
-#define DEBUG 0
+#define RUN_ON_INSN 350
+#define DEBUG 1
 #define SANITY_CHECK 1
 #define NUM_FREE_LISTS 7
 
@@ -207,7 +207,10 @@ void heapCheckCounter(char* c)
 void add_to_free_list(void *bp)
 {
 	int list;
+	int i;
 	size_t size = GET_SIZE(HDRP(bp));
+
+	printf("\nWorking with a block of size: %u\n", size);
 
 	// Determine which free list this block belongs in
 	for (list = 0; list < NUM_FREE_LISTS; ++list)
@@ -219,6 +222,11 @@ void add_to_free_list(void *bp)
 	if (list == NUM_FREE_LISTS)
 		--list;
 	
+	printf("Putting it in list: %d\n", list);
+	printf("Free lists pointer pre insertion\n");
+	for (i = 0; i < NUM_FREE_LISTS; ++i)
+		printf("List pointer %d points to %u\n", i, fls[i]);
+
 	if(fls[list]==NULL)//If free list empty
     {
 		SetNext(bp,NULL);//Set next to null
@@ -233,6 +241,9 @@ void add_to_free_list(void *bp)
     	SetPrev(fls[list],bp);
     }
 	fls[list]=bp;//Add block to head of free list
+	printf("Free lists pointer post insertion\n");
+	for (i = 0; i < NUM_FREE_LISTS; ++i)
+		printf("List pointer %d points to %u\n", i, fls[i]);
 }
 
 void remove_from_free_list(void* bp)
@@ -379,8 +390,8 @@ void * find_fit(size_t asize)
 		//If a block is not allocated, and the size fits
         if ((asize <= GET_SIZE(HDRP(bp))))
         {
-			assert(!GET_ALLOC(bp));
-			return bp;        	
+			assert(!GET_ALLOC(HDRP(bp)));
+			return bp;
 		}
 	}
 
