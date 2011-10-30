@@ -346,17 +346,6 @@ void *extend_heap(size_t words)
 	if ( (bp = mem_sbrk(size)) == NULL )
         return NULL;
 	
-	// Only extend in amounts that fit perfectly into a free list
-//	int i;
-/*	for (i = 0; i < NUM_FREE_LISTS; ++i)
-	{
-		if (size <= limits[i])
-		{
-			size = limits[i];
-			break;
-		}
-	}
-*/
     /* Initialize free block header/footer and the epilogue header */
 	unsigned int prev = GET_PREV(HDRP(epilogue));
 	PUT(HDRP(bp), PACK(size, 0, prev));                // free block header
@@ -529,7 +518,7 @@ void *mm_malloc(size_t size)
     }
 
     /* No fit found. Get more memory and place the block */
-    extendsize = MAX(asize, CHUNKSIZE);//this is terrible
+    extendsize = MAX(asize, CHUNKSIZE);
 	// NOTE: extend_heap adds the new space to the free list
 	if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
     {
@@ -545,8 +534,10 @@ void *mm_malloc(size_t size)
  *********************************************************/
 void *mm_realloc(void *ptr, size_t size)
 {
-    heapCheckCounter("r");
-	
+	size_t difference, extendsize;
+	void * new_bp;
+	heapCheckCounter("r");
+
 	//check what size the block actually is
 	size_t block_size = GET_SIZE(HDRP(ptr));
 	size_t new_size = (size + ALLOC_OVERHEAD + ALIGNMENT -1) / ALIGNMENT * ALIGNMENT;
@@ -556,18 +547,38 @@ void *mm_realloc(void *ptr, size_t size)
 	
 	void *newptr;
     
-	//We must allocate more memory!
-	//Twice as much, since if it was realloced once,
-	//it's likely to be realloced again.
-	newptr=mm_malloc(new_size*2);
+	// If the block being grown is the last block, then there's no need to copy, just extend the heap and give the extra space to this block
+	if (NEXT_BLKP(ptr) == epilogue)
+	{
+		difference = new_size - block_size;
+		// Extend the heap
+		extendsize = MAX(difference, CHUNKSIZE);
+		if ((new_bp = extend_heap(extendsize/WSIZE)) == NULL)
+		{
+			return NULL;
+		}
+		remove_from_free_list(new_bp);
+		// Combine the blocks
+		PUT(HDRP(ptr), PACK(block_size+extendsize, 1, GET_PREV(HDRP(ptr))));
+		// Update the epilogue's prev
+		PUT(HDRP(epilogue), PACK(0, 1, 1));
+		newptr = ptr;
+	}
+	else
+	{
+		//We must allocate more memory!
+		//A lot more, since if it was realloced once,
+		//it's likely to be realloced again.
+		newptr=mm_malloc(new_size);
 	
-	//if malloc failed, return NULL
-    if (newptr == NULL)
-    	return NULL;	
+		//if malloc failed, return NULL
+		if (newptr == NULL)
+			return NULL;	
 	
-	//copy stuff from old ptr to new ptr
-	memcpy(newptr,ptr,new_size);
-	mm_free(ptr);
+		//copy stuff from old ptr to new ptr
+		memcpy(newptr,ptr,new_size);
+		mm_free(ptr);
+	}	
 	return newptr;
 }
 
