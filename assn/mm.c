@@ -520,7 +520,7 @@ void *mm_realloc(void *ptr, size_t size)
 int freelistbounds_check(void *l)
 {
 	void * bp;
-	void *start = mem_heap_lo();
+	void *start = mem_heap_lo() ;
 	void *end = mem_heap_hi()-3;//points to last word
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
@@ -580,8 +580,8 @@ int searchlist_check(void*p,void *l)
 int allfreeinfl_check(void *l)
 {
 	void *bp;
-	void *end = mem_heap_hi()-3;//points to last word
-	for(bp = mem_heap_lo();bp!=end;bp+=GET_SIZE(HDRP(bp)))
+	void *end = mem_heap_hi()- WSIZE + 1;//points to last word
+	for(bp = mem_heap_lo() + DSIZE;bp<end;bp+=GET_SIZE(HDRP(bp)))
 	{
 		//if the block is not allocated, but you cannot find it in the free list
 		if(GET_ALLOC(HDRP(bp))==0 && searchlist_check(bp,fl)==0)
@@ -596,7 +596,7 @@ int searchmem_check(void*bp)
 	void * p;
 	void *end = mem_heap_hi()-3;
 	//from start of memory to end of memory
-	for(p=mem_heap_lo();p<end;p+=GET_SIZE(HDRP(p)))
+	for(p=mem_heap_lo()+DSIZE;p<end;p+=GET_SIZE(HDRP(p)))
 	{
 		//if we found the block, then it is valid
 		if(p==bp)
