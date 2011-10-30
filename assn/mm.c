@@ -408,16 +408,46 @@ void * find_fit(size_t asize)
     return NULL;
 }
 
+// Splits a free block (bp) into two pieces.
+// Return a pointer to the second peice (bp will still be valid and will point to the first peice)
+void *split(void *bp, size_t size)
+{
+	void * new_block;
+	size_t old_size;
+
+	old_size = GET_SIZE(HDRP(bp));
+	// Alignment should be maintained
+	assert(((old_size - size) % ALIGNMENT) == 0);
+	
+	// Resize the old block
+	PUT(HDRP(bp), PACK(size, 0, GET_PREV(HDRP(bp))));
+	PUT(FTRP(bp), PACK(size, 0, GET_PREV(HDRP(bp))));
+	// Create the new block
+	new_block = NEXT_BLKP(bp);
+	PUT(HDRP(new_block), PACK(old_size - size, 0, 0));
+	PUT(FTRP(new_block), PACK(old_size - size, 0, 0));
+	
+	return new_block;
+}
+
 /**********************************************************
  * place
  * Mark the block as allocated
  **********************************************************/
-void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 128
+void place(void* bp, size_t asize)
 {
-    /* Get the current block size */
+ 	/* Get the current block size */
     size_t bsize = GET_SIZE(HDRP(bp));
 
 	remove_from_free_list(bp);	
+
+	// For now, we only do splitting on the biggest blocks and only if the remainder would still belong on the biggest queue
+	if (bsize > limits[NUM_FREE_LISTS - 2] && (bsize - asize) > limits[NUM_FREE_LISTS - 2])
+	{
+		// Put the remainder of the block back on a free list
+		add_to_free_list(split(bp, asize));
+		bsize = asize;
+	}
 
 	// Update the next physical block's prev bit	
 	void * next_physical = NEXT_BLKP(bp);
@@ -474,7 +504,7 @@ void mm_free(void *bp)
 void *mm_malloc(size_t size)
 {
 	heapCheckCounter("m");
-    size_t asize; /* adjusted block size */
+	size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
     /* Ignore spurious requests */
