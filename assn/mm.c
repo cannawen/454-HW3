@@ -91,19 +91,21 @@ void* fl=NULL;
 #define DEBUG 1
 int counter;
 
+void F(char*c,int b);
 void heap_chekka(void* l);
+int coalescing_check(void* l);
 
 void P(char *c)
 {
-	//if(DEBUG) {printf("%s",c);}
+	if(DEBUG) {printf("%s",c);}
 	fflush(stdout);
 }
-#define RUN_HEAP_CHEKKA_ON_INSN 5000
+#define RUN_HEAP_CHEKKA_ON_INSN 347
 void C(char* c)
 {
 	if(DEBUG) {
-		//printf("(%s%i)",c,counter);
-		//P("");
+		printf("(%s%i)",c,counter);
+		P("");
 		counter++;
 		if(counter==RUN_HEAP_CHEKKA_ON_INSN)
 			heap_chekka(fl);
@@ -127,9 +129,9 @@ void C(char* c)
     PUT(heap_listp+DSIZE, PACK(FREE_OVERHEAD, 1, 1));   // prologue footer
 	PUT(heap_listp+WSIZE+DSIZE, PACK(0, 1, 1));    // epilogue header
 	
-	epilogue = heap_listp+WSIZE+DSIZE;
+	epilogue = heap_listp+WSIZE+DSIZE+WSIZE;
 	fl=NULL;
-	counter=4;
+	counter=0;
      return 0;
  }
  
@@ -168,12 +170,12 @@ void add_to_free_list(void *bp)
 void *coalesce(void *bp)
 {
 	unsigned int prev_alloc = GET_PREV(HDRP(bp));
-	printf("prev is: %u\n", prev_alloc); fflush(stdout);
 	size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 	
 	if (prev_alloc && next_alloc) /*case 1 faFaf */
 	{
+	    P("!1!");
     	add_to_free_list(bp);
 		return bp;
 	}
@@ -270,7 +272,7 @@ void *extend_heap(size_t words)
         return NULL;
 
     /* Initialize free block header/footer and the epilogue header */
-	unsigned int prev = GET_PREV(epilogue);
+	unsigned int prev = GET_PREV(HDRP(epilogue));
 	PUT(HDRP(bp), PACK(size, 0, prev));                // free block header
     PUT(FTRP(bp), PACK(size, 0, prev));                // free block footer
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1, 0));        // new epilogue header
@@ -345,15 +347,18 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
     	SetNext(p,n);
     	SetPrev(n,p);
     }
-  
+ 	
 	void * next_physical = NEXT_BLKP(bp);
-	unsigned int alloc = GET_ALLOC(next_physical);
-	size_t next_size = GET_SIZE(next_physical);	
+	unsigned int alloc = GET_ALLOC(HDRP(next_physical));
+	size_t next_size = GET_SIZE(HDRP(next_physical));	
 	PUT(HDRP(next_physical), PACK(next_size, alloc, 1));
-	if (alloc == 0)
+	if (alloc == 0 && next_size>0)
 		PUT(FTRP(next_physical), PACK(next_size, alloc, 1));
 	
-	PUT(HDRP(bp), PACK(bsize, 1, GET_PREV(bp)));
+	PUT(HDRP(bp), PACK(bsize, 1, GET_PREV(HDRP(bp))));
+	unsigned int prev = GET_PREV(HDRP(NEXT_BLKP(bp)));
+	prev = GET_PREV(HDRP(epilogue));
+	
 }
 
 
@@ -372,6 +377,7 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
+	assert(coalescing_check(fl));
 	C("f");
 	//add_to_free_list(bp);
     mark_free(bp);
@@ -393,6 +399,7 @@ void mm_free(void *bp)
 void *mm_malloc(size_t size)
 {
 	C("m");
+	assert(coalescing_check(fl));
     size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
@@ -414,7 +421,7 @@ void *mm_malloc(size_t size)
 
     /* No fit found. Get more memory and place the block */
     extendsize = MAX(asize, CHUNKSIZE);//this is terrible
-    // NOTE: extend_heap adds the new space to the free list
+	// NOTE: extend_heap adds the new space to the free list
 	if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
     {
 		return NULL;
@@ -426,7 +433,6 @@ void *mm_malloc(size_t size)
 
 /**********************************************************
  * mm_realloc
- * Implemented simply in terms of mm_malloc and mm_free
  *********************************************************/
 void *mm_realloc(void *ptr, size_t size)
 {
