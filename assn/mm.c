@@ -36,7 +36,6 @@ team_t team = {
 
 /*************************************************************************
  * Basic Constants and Macros
- * You are not required to use these macros but may find them helpful.
 *************************************************************************/
 #define WSIZE       4            /* word size (bytes) */
 #define DSIZE       8            /* doubleword size (bytes) */
@@ -86,13 +85,22 @@ Get returns value*/
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
 #define RUN_HEAP_CHEKKA_ON_INSN 10
+#define DEBUG 0
 
+
+/*************************************************************************
+ * Globals 
+ * This data has to be kept < 128 bytes
+*************************************************************************/
 void* epilogue = NULL;
 void* fl=NULL;
-#define DEBUG 0
 int counter;
 int itr=0;
 
+/*************************************************************************
+ * Function prototypes
+ * These would go in an h file if we were allowed to have one
+*************************************************************************/
 void F(char*c,int b);
 void heap_chekka(void* l);
 int coalescing_check(void* l);
@@ -404,11 +412,14 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
-	assert(freelistbounds_check(fl));
-	assert(freelist_check(fl));
-	assert(allflinmem_check(fl));
-	assert(coalescing_check(fl));
-	assert(allfreeinfl_check(fl));
+	if (DEBUG)
+	{
+		assert(freelistbounds_check(fl));
+		assert(freelist_check(fl));
+		assert(allflinmem_check(fl));
+		assert(coalescing_check(fl));
+		assert(allfreeinfl_check(fl));
+	}
 	C("f");
 	//add_to_free_list(bp);
     mark_free(bp);
@@ -430,12 +441,15 @@ void mm_free(void *bp)
 void *mm_malloc(size_t size)
 {
 	C("m");
-	assert(freelistbounds_check(fl));
-	assert(freelist_check(fl));
-	assert(allflinmem_check(fl));
-	assert(coalescing_check(fl));
-	assert(allfreeinfl_check(fl));
-    size_t asize; /* adjusted block size */
+	if (DEBUG)
+	{
+		assert(freelistbounds_check(fl));
+		assert(freelist_check(fl));
+		assert(allflinmem_check(fl));
+		assert(coalescing_check(fl));
+		assert(allfreeinfl_check(fl));
+	}
+	size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
     /* Ignore spurious requests */
