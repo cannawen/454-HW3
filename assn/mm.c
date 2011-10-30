@@ -324,6 +324,18 @@ void *coalesce(void *bp)
 	return bp;
 }
 
+unsigned int round_up_to_next_power_of_two(unsigned int size)
+{
+	size--;
+	size |= size >> 1;
+	size |= size >> 2;
+	size |= size >> 4;
+	size |= size >> 8;
+	size |= size >> 16;
+	size++;
+	return size;
+}
+
 /**********************************************************
  * extend_heap
  * Extend the heap by "words" words, maintaining alignment
@@ -336,8 +348,7 @@ void *extend_heap(size_t words)
     size_t size;
 
     /* Allocate an even number of words to maintain alignments */
-    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
-    // TODO: implement allocating a power of 2
+    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;	
 	if ( (bp = mem_sbrk(size)) == NULL )
         return NULL;
 
@@ -465,7 +476,12 @@ void *mm_malloc(size_t size)
     if (size <= 0)
         return NULL;
 
-    /* Adjust block size to include overhead and alignment reqs. */
+	if (size <= limits[NUM_FREE_LISTS - 2])
+	{
+		size = round_up_to_next_power_of_two(size);    
+    }
+
+	/* Adjust block size to include overhead and alignment reqs. */
     if (size <= DSIZE)
         asize = DSIZE + ALLOC_OVERHEAD;
     else
