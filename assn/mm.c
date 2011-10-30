@@ -88,6 +88,7 @@ void* heap_listp = NULL;
 void* fl=NULL;
 #define DEBUG 1
 int counter;
+int itr=0;
 
 void heap_chekka(void* l);
 
@@ -96,16 +97,26 @@ void P(char *c)
 	//if(DEBUG) {printf("%s",c);}
 	fflush(stdout);
 }
-#define RUN_HEAP_CHEKKA_ON_INSN 5000
+#define RUN_HEAP_CHEKKA_ON_INSN 10
 void C(char* c)
 {
 	if(DEBUG) {
 		//printf("(%s%i)",c,counter);
 		//P("");
 		counter++;
+		
 		if(counter==RUN_HEAP_CHEKKA_ON_INSN)
-			heap_chekka(fl);
-			
+		{
+			if(itr==11)
+			{
+				heap_chekka(fl);
+				itr=0;
+			}
+			else
+				itr++;
+				//printf("!!!ITERRR!!!!%i",itr);P("");
+			//heap_chekka(fl);
+		}
 	}
 }
 /**********************************************************
@@ -453,7 +464,7 @@ void *mm_realloc(void *ptr, size_t size)
 
 
 
-//check if bp is within bounds of heap
+//Do pointers in heap block point to valid heap addresses?
 int freelistbounds_check(void *l)
 {
 	void * bp;
@@ -462,12 +473,12 @@ int freelistbounds_check(void *l)
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		// is out of bounds
-		if( ( (bp>=start) && (bp <=end) ) ==0 )
+		if((bp>=start && bp <=end)==0)
 			return 0;//you done something wrong
 	}
 	return 1;
 }
-//Check that all blocks in freelist are in fact free,
+//Is every block in the free list marked as free?
 int freelist_check(void* l)
 {
 	void * bp;
@@ -480,7 +491,7 @@ int freelist_check(void* l)
 	return 1;
 }
 
-//All blocks are coalesced properly
+//Are blocks are coalesced properly
 int coalescing_check(void* l)
 {
 	void * bp;
@@ -494,41 +505,74 @@ int coalescing_check(void* l)
 }
 
 //Find if this bp is in free list
-int find_check(void*p,void *l)
+int searchlist_check(void*p,void *l)
 {
 	void * bp;
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		if(bp==p)//if we have found the thing
-			return 0;//you done something wrong
+			return 1;//you done something wrong
 	}
-	return 1;
+	return 0;
 }
 
-//Check if all free blocks are in free list
+//Is every free block actually in the free list
 int allfreeinfl_check(void *l)
 {
-	void *bp = mem_heap_lo();
+	void *bp;
 	void *end = mem_heap_hi()-3;//points to last word
-	for(;bp<end;bp+=GET_SIZE(HDRP(bp)))
+	for(bp = mem_heap_lo();bp!=end;bp+=GET_SIZE(HDRP(bp)))
 	{
 		//if the block is not allocated, but you cannot find it in the free list
-		if(GET_ALLOC(HDRP(bp))==0 && find_check(bp,fl)==0)
+		if(GET_ALLOC(HDRP(bp))==0 && searchlist_check(bp,fl)==0)
 			return 0;
 	}
 	return 1;
 }
 
-void F(char*c,int b)
+//Finding if this bp is in memory
+int searchmem_check(void*bp)
 {
-	printf("\nCHECK %s: %i",c,b); P("");
+	void * p;
+	void *end = mem_heap_hi()-3;
+	//from start of memory to end of memory
+	for(p=mem_heap_lo();p<end;p+=GET_SIZE(HDRP(p)))
+	{
+		//if we found the block, then it is valid
+		if(p==bp)
+			return 1;
+	}
+	return 0;
 }
+
+//Check if all free list's pointers are in memory
+int allflinmem_check(void *l)
+{
+	void * bp;
+	//For each element in free list
+	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	{
+		//if we cannot find this bp memory
+		if(searchmem_check(bp)==0)
+			return 0;
+	}
+	return 1;
+}
+
+//print one check
+void printCheck(char*c,int b)
+{
+	printf("CHEKKA %s? %i\n",c,b); P("");
+}
+//print all checks
 void heap_chekka(void* l)
 {
-	F("All blocks in fl are valid",	freelistbounds_check(l));
-	F("All blocks in fl are free",freelist_check(l));
-	F("All blocks in fl are properly coalesced",coalescing_check(l));
-	F("All free blocks are in fl",allfreeinfl_check(l));
+	printCheck("1. Do pointers in heap block point to valid heap addresses",	freelistbounds_check(l));
+	printCheck("2. Is every block in the free list marked as free", freelist_check(l));
+	printCheck("3. Do pointers in free list point to valid free blocks", allflinmem_check(l));
+	printCheck("4. Are blocks are coalesced properly",coalescing_check(l));
+	printCheck("5. Is every free block actually in the free list" ,allfreeinfl_check(l));
+	printf("\n\n\n");P("");
 	
 }
 
