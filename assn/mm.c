@@ -96,6 +96,13 @@ int itr=0;
 void F(char*c,int b);
 void heap_chekka(void* l);
 int coalescing_check(void* l);
+void printCheck(char*c,int b);
+int allflinmem_check(void *l);
+int searchmem_check(void*bp);
+int allfreeinfl_check(void *l);
+int searchlist_check(void*p,void *l);
+int freelist_check(void* l);
+int freelistbounds_check(void *l);
 
 void P(char *c)
 {
@@ -377,10 +384,23 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
 // Mark the block as free and set up header and footer
 void mark_free(void *bp)
 {
+	printf("Marking free\n"); fflush(stdout);	
     size_t size = GET_SIZE(HDRP(bp));
+	printf("Size: %u\n", size); fflush(stdout);	
     unsigned int prev = GET_PREV(HDRP(bp));
+	printf("prev: %u\n", prev); fflush(stdout);	
 	PUT(HDRP(bp), PACK(size,0,prev));
     PUT(FTRP(bp), PACK(size,0,prev));
+	
+	// Update the next block
+	void * next = NEXT_BLKP(bp);
+	size_t next_size = GET_SIZE(HDRP(next));
+	unsigned int next_alloc = GET_ALLOC(HDRP(next));	
+	PUT(HDRP(next), PACK(next_size,next_alloc,0));
+	if (next_alloc == 0 && next_size > 0)
+		PUT(FTRP(next), PACK(GET_SIZE(HDRP(next)),GET_ALLOC(HDRP(next)),0));
+	unsigned int next_prev = GET_PREV(HDRP(NEXT_BLKP(bp)));
+	printf("next_prev: %u\n", next_prev); fflush(stdout);
 }
 
 /**********************************************************
@@ -389,7 +409,11 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
+	assert(freelistbounds_check(fl));
+	assert(freelist_check(fl));
+	assert(allflinmem_check(fl));
 	assert(coalescing_check(fl));
+	assert(allfreeinfl_check(fl));
 	C("f");
 	//add_to_free_list(bp);
     mark_free(bp);
@@ -411,7 +435,11 @@ void mm_free(void *bp)
 void *mm_malloc(size_t size)
 {
 	C("m");
+	assert(freelistbounds_check(fl));
+	assert(freelist_check(fl));
+	assert(allflinmem_check(fl));
 	assert(coalescing_check(fl));
+	assert(allfreeinfl_check(fl));
     size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
@@ -522,8 +550,16 @@ int coalescing_check(void* l)
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		//if you have free blocks next to you
-		if(GET_ALLOC(NEXT_BLKP(bp))== 0 || GET_ALLOC(PREV_BLKP(bp))== 0)
+		if(GET_ALLOC(NEXT_BLKP(bp))== 0 || GET_PREV(HDRP(bp)) == 0)
+		{
+			if (GET_ALLOC(NEXT_BLKP(bp)) == 0)
+				P("next\n");
+				if (epilogue == NEXT_BLKP(bp))
+					P("epilogue\n");
+			else
+				P("previous\n");
 			return 0;
+		}
 	}
 	return 1;
 }
