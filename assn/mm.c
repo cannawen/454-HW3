@@ -139,36 +139,29 @@ void mm_check()
 	int i;
 	for (i = 0; i < NUM_FREE_LISTS; ++i)
 	{
-		run_check(fls[i], limits[i], i>0?limits[i-1]:0); //Run sanity check for every free list we have.
+		 //Run sanity check for every free list we have.
+		run_check(fls[i], limits[i], i>0?limits[i-1]:0);
 	}
 	flCorrectnessCheck(fls);
 }
 void heapCheckCounter(char* c)
 {
 	counter++;
-	if(DEBUG) {
+	if(DEBUG) 
+	{
 		printf("(%s%i)",c,counter); P("");
-		
 		if(counter==RUN_ON_INSN)
 		{
-			itr++;
-			if(itr==1)
-			{
+			if(itr%12==1)
 				mm_check();
-			}
-			if(itr==12)
-				itr=0;
 		}
 	}
 	if(SANITY_CHECK)
 	{
 		if(counter%1000==0)
 		{
-			itr++;
-			if(itr==1)
+			if(itr%12==1)
 				mm_check();
-			if(itr==12)
-				itr=0;
 		}
 	}
 }
@@ -200,11 +193,12 @@ void heapCheckCounter(char* c)
 	}
 	limits[list - 1] = -1;
 	counter=0;
+	itr++;
 	return 0;
  }
  
 // Assumes the block has already been marked as free
-// and that it's header and footer are set up appropriately
+// and that its header and footer are set up appropriately
 void add_to_free_list(void *bp)
 {
 	int list;
@@ -225,9 +219,9 @@ void add_to_free_list(void *bp)
 		SetNext(bp,NULL);//Set next to null
 	    SetPrev(bp,NULL);//Set prev to null
     }
-    else//If list is full
+    else//If list is not empty
     {
-    	//Add this block to the head of the list
+    	//Add this block to point to item at the head of the list
     	SetNext(bp,fls[list]);//Set next to whatever was at the head
     	SetPrev(bp,NULL);//Set prev to null
     	//Modify former head block to be add bp as prev
@@ -664,11 +658,14 @@ int* flCountsCheck(void ** l)
 {
 	int i;
 	void * bp;
+	//for each free list
 	for(i=0;i<NUM_FREE_LISTS;i++)
 	{
 		num[i]=0;
+		//go through the list
 		for(bp=l[i];bp!=NULL;bp=GetNext(bp))
 		{
+			//count all the things!
 			num[i]++;
 		}
 	}
