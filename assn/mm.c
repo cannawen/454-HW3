@@ -111,13 +111,21 @@ void P(char *c)
 	fflush(stdout);
 }
 
-void run_sanity_tests(void* l)
+//This runs a check for one free list, l.
+void run_check(void* l)
 {
 	assert(freelistbounds_check(l));
 	assert(freelist_check(l));
 	assert(allflinmem_check(l));
 	assert(coalescing_check(l));
 	assert(allfreeinfl_check(l));
+}
+//This heap-checks all of our free lists
+void mm_check()
+{
+	run_check(fl); //Run sanity check for every free list we have.
+	//run_check(fl2);
+	//run_check(f3); ... etc.
 }
 void C(char* c)
 {
@@ -135,8 +143,6 @@ void C(char* c)
 			}
 			else
 				itr++;
-				//printf("!!!ITERRR!!!!%i",itr);P("");
-			//heap_chekka(fl);
 		}
 	}
 	else if(SANITY_CHECK)
@@ -145,7 +151,7 @@ void C(char* c)
 		{
 			if(counter%1000==0)
 			{
-				run_sanity_tests(fl);
+				mm_check();
 			}
 			itr=0;
 		}
@@ -524,7 +530,7 @@ void *mm_realloc(void *ptr, size_t size)
 
 
 
-//Do pointers in heap block point to valid heap addresses?
+//Do pointers in free list point to valid heap addresses?
 int freelistbounds_check(void *l)
 {
 	void * bp;
@@ -552,9 +558,11 @@ int freelist_check(void* l)
 }
 
 //Are blocks are coalesced properly
+//Assumes free list is completely correct.
 int coalescing_check(void* l)
-{
+{	
 	void * bp;
+	//Go through free list
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		//if you have free blocks next to you
@@ -570,6 +578,7 @@ int coalescing_check(void* l)
 int searchlist_check(void*p,void *l)
 {
 	void * bp;
+	//go through free list
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		if(bp==p)//if we have found the thing
@@ -578,11 +587,12 @@ int searchlist_check(void*p,void *l)
 	return 0;
 }
 
-//Is every free block actually in the free list
+//Is every free block is actually present in the free list
 int allfreeinfl_check(void *l)
 {
 	void *bp;
 	void *end = mem_heap_hi()- WSIZE + 1;//points to last word
+	//go through memory
 	for(bp = mem_heap_lo() + DSIZE;bp<end;bp+=GET_SIZE(HDRP(bp)))
 	{
 		//if the block is not allocated, but you cannot find it in the free list
@@ -615,6 +625,7 @@ int allflinmem_check(void *l)
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		//if we cannot find this bp memory
+		//then free list pointer is wrong. Corrupt free list, return fail
 		if(searchmem_check(bp)==0)
 			return 0;
 	}
