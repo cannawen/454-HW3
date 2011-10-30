@@ -40,8 +40,8 @@ team_t team = {
 #define WSIZE       4            /* word size (bytes) */
 #define DSIZE       8            /* doubleword size (bytes) */
 #define CHUNKSIZE   (1<<7)      /* initial heap size (bytes) */
-#define FREE_OVERHEAD    8           /* overhead of header and footer (bytes) */
-#define ALLOC_OVERHEAD    8           /* overhead of header and footer (bytes) */
+#define FREE_OVERHEAD    16           /* overhead of header and footer (bytes) */
+#define ALLOC_OVERHEAD    4           /* overhead of header and footer (bytes) */
 
 #define MAX(x,y) ((x) > (y)?(x) :(y))
 
@@ -85,7 +85,7 @@ Get returns value*/
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
 #define RUN_HEAP_CHEKKA_ON_INSN 10
-#define DEBUG 0
+#define DEBUG 1
 #define SANITY_CHECK 1
 #define NUM_FREE_LISTS 7
 
@@ -179,11 +179,10 @@ void C(char* c)
 	if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
     	return -1;
     PUT(heap_listp, 0);                         // alignment padding 
-    PUT(heap_listp+WSIZE, PACK(FREE_OVERHEAD, 1, 1));   // prologue header
-    PUT(heap_listp+DSIZE, PACK(FREE_OVERHEAD, 1, 1));   // prologue footer
-	PUT(heap_listp+WSIZE+DSIZE, PACK(0, 1, 1));    // epilogue header
+    PUT(heap_listp+WSIZE, PACK(ALLOC_OVERHEAD, 1, 1));   // prologue header
+	PUT(heap_listp+DSIZE, PACK(0, 1, 1));    // epilogue header
 	
-	epilogue = heap_listp+WSIZE+DSIZE+WSIZE;
+	epilogue = heap_listp+DSIZE+WSIZE;
 	//fl=NULL;
 	limit = 16;
 	for (list = 0; list < NUM_FREE_LISTS; ++list)
@@ -201,7 +200,6 @@ void C(char* c)
 void add_to_free_list(void *bp)
 {
 	int list;
-	void *flist;
 	size_t size = GET_SIZE(HDRP(bp));
 
 	// Determine which free list this block belongs in
@@ -214,26 +212,20 @@ void add_to_free_list(void *bp)
 	if (list == NUM_FREE_LISTS)
 		--list;
 	
-	flist = fls[list];
-
-	if(flist==NULL)//If free list empty
+	if(fls[list]==NULL)//If free list empty
     {
-
-        flist=bp;//Add block to freed list
 		SetNext(bp,NULL);//Set next to null
-	//	printf("\n%u has now set next to %u\n",bp,GetNext(bp));P("");
 	    SetPrev(bp,NULL);//Set prev to null
     }
     else//If list is full
     {
     	//Add this block to the head of the list
-    	SetNext(bp,flist);//Set next to whatever was at the head
+    	SetNext(bp,fls[list]);//Set next to whatever was at the head
     	SetPrev(bp,NULL);//Set prev to null
     	//Modify former head block to be add bp as prev
-    	SetPrev(flist,bp);
-    	//Set this block as new head
-    	flist=bp;
+    	SetPrev(fls[list],bp);
     }
+	fls[list]=bp;//Add block to head of free list
 }
 
 void remove_from_free_list(void* bp)
@@ -407,28 +399,9 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
     /* Get the current block size */
     size_t bsize = GET_SIZE(HDRP(bp));
 
-	void *p = GetPrev(bp);
-  	void *n = GetNext(bp);
-	
-	if(p==NULL&&n==NULL)//only one element
-	{
-		fl=NULL;
-    }
-    else if(p!=NULL && n==NULL)//at the end of list
-    {
-    	SetNext(p,n);//set NULL to previousBlock->nextFree
-	}
-    else if(p==NULL&&n!=NULL)//at the start of the linked list
-    {
-    	SetPrev(n,p);//Set nextBlock->prevFree=NULL, meaning it is at the head of the linked list
-    	fl=n;
-    }
-    else//if we are in the middle
-    {
-    	SetNext(p,n);
-    	SetPrev(n,p);
-    }
- 	
+	remove_from_free_list(bp);	
+
+	// Update the next physical block's prev bit	
 	void * next_physical = NEXT_BLKP(bp);
 	unsigned int alloc = GET_ALLOC(HDRP(next_physical));
 	size_t next_size = GET_SIZE(HDRP(next_physical));	
@@ -436,10 +409,9 @@ void place(void* bp, size_t asize)//doesn't even use asize: terrible, just uses 
 	if (alloc == 0 && next_size>0)
 		PUT(FTRP(next_physical), PACK(next_size, alloc, 1));
 	
+	// Update the block itself
+	// Note: we don't touch the footer because allocated blocks don't have footers
 	PUT(HDRP(bp), PACK(bsize, 1, GET_PREV(HDRP(bp))));
-	unsigned int prev = GET_PREV(HDRP(NEXT_BLKP(bp)));
-	prev = GET_PREV(HDRP(epilogue));
-	
 }
 
 
