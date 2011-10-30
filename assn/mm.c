@@ -39,7 +39,7 @@ team_t team = {
 *************************************************************************/
 #define WSIZE       4            /* word size (bytes) */
 #define DSIZE       8            /* doubleword size (bytes) */
-#define CHUNKSIZE   (1<<7)      /* initial heap size (bytes) */
+#define CHUNKSIZE   16      /* initial heap size (bytes) */
 #define FREE_OVERHEAD    16           /* overhead of header and footer (bytes) */
 #define ALLOC_OVERHEAD    4           /* overhead of header and footer (bytes) */
 
@@ -318,6 +318,18 @@ void *coalesce(void *bp)
 	return bp;
 }
 
+unsigned int round_up_to_next_power_of_two(unsigned int size)
+{
+	size--;
+	size |= size >> 1;
+	size |= size >> 2;
+	size |= size >> 4;
+	size |= size >> 8;
+	size |= size >> 16;
+	size++;
+	return size;
+}
+
 /**********************************************************
  * extend_heap
  * Extend the heap by "words" words, maintaining alignment
@@ -330,11 +342,21 @@ void *extend_heap(size_t words)
     size_t size;
 
     /* Allocate an even number of words to maintain alignments */
-    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;
-    // TODO: implement allocating a power of 2
+    size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;	
 	if ( (bp = mem_sbrk(size)) == NULL )
         return NULL;
-
+	
+	// Only extend in amounts that fit perfectly into a free list
+//	int i;
+/*	for (i = 0; i < NUM_FREE_LISTS; ++i)
+	{
+		if (size <= limits[i])
+		{
+			size = limits[i];
+			break;
+		}
+	}
+*/
     /* Initialize free block header/footer and the epilogue header */
 	unsigned int prev = GET_PREV(HDRP(epilogue));
 	PUT(HDRP(bp), PACK(size, 0, prev));                // free block header
@@ -459,7 +481,12 @@ void *mm_malloc(size_t size)
     if (size <= 0)
         return NULL;
 
-    /* Adjust block size to include overhead and alignment reqs. */
+	if (size <= limits[NUM_FREE_LISTS - 2])
+	{
+		size = round_up_to_next_power_of_two(size);    
+    }
+
+	/* Adjust block size to include overhead and alignment reqs. */
     if (size <= DSIZE)
         asize = DSIZE + ALLOC_OVERHEAD;
     else
