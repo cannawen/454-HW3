@@ -90,6 +90,7 @@ Get returns value*/
 void* epilogue = NULL;
 void* fl=NULL;
 #define DEBUG 0
+#define SANITY_CHECK 1
 int counter;
 int itr=0;
 
@@ -110,12 +111,20 @@ void P(char *c)
 	fflush(stdout);
 }
 
+void run_sanity_tests(void* l)
+{
+	assert(freelistbounds_check(l));
+	assert(freelist_check(l));
+	assert(allflinmem_check(l));
+	assert(coalescing_check(l));
+	assert(allfreeinfl_check(l));
+}
 void C(char* c)
 {
+	counter++;
 	if(DEBUG) {
 		printf("(%s%i)",c,counter);
 		P("");
-		counter++;
 		
 		if(counter==RUN_HEAP_CHEKKA_ON_INSN)
 		{
@@ -129,6 +138,19 @@ void C(char* c)
 				//printf("!!!ITERRR!!!!%i",itr);P("");
 			//heap_chekka(fl);
 		}
+	}
+	else if(SANITY_CHECK)
+	{
+		if(itr==11)
+		{
+			if(counter%1000==0)
+			{
+				run_sanity_tests(fl);
+			}
+			itr=0;
+		}
+		else
+			itr++;
 	}
 }
 
@@ -404,11 +426,7 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
-	assert(freelistbounds_check(fl));
-	assert(freelist_check(fl));
-	assert(allflinmem_check(fl));
-	assert(coalescing_check(fl));
-	assert(allfreeinfl_check(fl));
+
 	C("f");
 	//add_to_free_list(bp);
     mark_free(bp);
@@ -430,11 +448,6 @@ void mm_free(void *bp)
 void *mm_malloc(size_t size)
 {
 	C("m");
-	assert(freelistbounds_check(fl));
-	assert(freelist_check(fl));
-	assert(allflinmem_check(fl));
-	assert(coalescing_check(fl));
-	assert(allfreeinfl_check(fl));
     size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
