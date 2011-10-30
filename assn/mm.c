@@ -375,14 +375,18 @@ void * find_fit(size_t asize)
 	if (list == NUM_FREE_LISTS)
 		--list;
 
-    for (bp = fls[list]; bp!=NULL; bp = GetNext(bp))//Go through the free list
-    {
-		//If a block is not allocated, and the size fits
-        if ((asize <= GET_SIZE(HDRP(bp))))
-        {
-			assert(!GET_ALLOC(HDRP(bp)));
-			return bp;
+    while (list < NUM_FREE_LISTS)
+	{
+		for (bp = fls[list]; bp!=NULL; bp = GetNext(bp))//Go through the free list
+		{
+			//If a block is not allocated, and the size fits
+			if ((asize <= GET_SIZE(HDRP(bp))))
+			{
+				assert(!GET_ALLOC(HDRP(bp)));
+				return bp;
+			}
 		}
+		++list;
 	}
 
     return NULL;
