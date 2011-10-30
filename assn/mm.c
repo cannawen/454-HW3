@@ -39,7 +39,7 @@ team_t team = {
 *************************************************************************/
 #define WSIZE       4            /* word size (bytes) */
 #define DSIZE       8            /* doubleword size (bytes) */
-#define CHUNKSIZE   (1<<7)      /* initial heap size (bytes) */
+#define CHUNKSIZE   16      /* initial heap size (bytes) */
 #define FREE_OVERHEAD    16           /* overhead of header and footer (bytes) */
 #define ALLOC_OVERHEAD    4           /* overhead of header and footer (bytes) */
 
