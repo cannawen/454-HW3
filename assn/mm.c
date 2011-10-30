@@ -84,11 +84,10 @@ Get returns value*/
 #define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
-#define RUN_HEAP_CHEKKA_ON_INSN 10
+#define RUN_ON_INSN 10
 #define DEBUG 1
 #define SANITY_CHECK 1
 #define NUM_FREE_LISTS 7
-
 
 /*************************************************************************
  * Globals 
@@ -106,15 +105,15 @@ int itr=0;
  * These would go in an h file if we were allowed to have one
 *************************************************************************/
 void F(char*c,int b);
-void heap_chekka(void* l);
+void heapChekka(void* l);
 int coalescing_check(void* l);
 void printCheck(char*c,int b);
-int allflinmem_check(void *l);
+int flValidPointersCheck(void *l);
 int searchmem_check(void*bp);
-int allfreeinfl_check(void *l);
+int flCorrectnessCheck(void *l);
 int searchlist_check(void*p,void *l);
-int freelist_check(void* l);
-int freelistbounds_check(void *l);
+int flAllFreeCheck(void* l);
+int flPointerBoundsCheck(void *l);
 
 void P(char *c)
 {
@@ -122,46 +121,49 @@ void P(char *c)
 	fflush(stdout);
 }
 
-void run_sanity_tests(void* l)
+//This runs a check for one free list, l.
+void run_check(void* l)
 {
-	assert(freelistbounds_check(l));
-	assert(freelist_check(l));
-	assert(allflinmem_check(l));
+	assert(flPointerBoundsCheck(l));
+	assert(flAllFreeCheck(l));
+	assert(flValidPointersCheck(l));
 	assert(coalescing_check(l));
-	assert(allfreeinfl_check(l));
+	assert(flCorrectnessCheck(l));
 }
-void C(char* c)
+//This heap-checks all of our free lists
+void mm_check()
+{
+	int i;
+	for (i = 0; i < NUM_FREE_LISTS; ++i)
+		run_check(fls[i]); //Run sanity check for every free list we have.
+}
+void heapCheckCounter(char* c)
 {
 	counter++;
 	if(DEBUG) {
-		printf("(%s%i)",c,counter);
-		P("");
+		//printf("(%s%i)",c,counter); P("");
 		
-		if(counter==RUN_HEAP_CHEKKA_ON_INSN)
+		if(counter==RUN_ON_INSN)
 		{
-			if(itr==11)
+			itr++;
+			if(itr==1)
 			{
-				heap_chekka(fl);
-				itr=0;
+				heapChekka(fl);
 			}
-			else
-				itr++;
-				//printf("!!!ITERRR!!!!%i",itr);P("");
-			//heap_chekka(fl);
+			if(itr==12)
+				itr=0;
 		}
 	}
 	else if(SANITY_CHECK)
 	{
-		if(itr==11)
+		if(counter%1000==0)
 		{
-			if(counter%1000==0)
-			{
-				run_sanity_tests(fl);
-			}
-			itr=0;
-		}
-		else
 			itr++;
+			if(itr==1)
+				mm_check();
+			if(itr==12)
+				itr=0;
+		}
 	}
 }
 
@@ -438,7 +440,7 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
-	C("f");
+	heapCheckCounter("f");
     mark_free(bp);
 	// coalesce calls add_to_free_list
 	coalesce(bp);
@@ -455,7 +457,7 @@ void mm_free(void *bp)
  **********************************************************/
 void *mm_malloc(size_t size)
 {
-	C("m");
+	heapCheckCounter("m");
     size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
@@ -492,7 +494,7 @@ void *mm_malloc(size_t size)
  *********************************************************/
 void *mm_realloc(void *ptr, size_t size)
 {
-    C("r");
+    heapCheckCounter("r");
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -532,8 +534,8 @@ void *mm_realloc(void *ptr, size_t size)
 
 
 
-//Do pointers in heap block point to valid heap addresses?
-int freelistbounds_check(void *l)
+//Do pointers in free list point to valid heap addresses?
+int flPointerBoundsCheck(void *l)
 {
 	void * bp;
 	void *start = mem_heap_lo() ;
@@ -547,7 +549,7 @@ int freelistbounds_check(void *l)
 	return 1;
 }
 //Is every block in the free list marked as free?
-int freelist_check(void* l)
+int flAllFreeCheck(void* l)
 {
 	void * bp;
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
@@ -560,9 +562,11 @@ int freelist_check(void* l)
 }
 
 //Are blocks are coalesced properly
+//Assumes free list is completely correct.
 int coalescing_check(void* l)
-{
+{	
 	void * bp;
+	//Go through free list
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		//if you have free blocks next to you
@@ -578,6 +582,7 @@ int coalescing_check(void* l)
 int searchlist_check(void*p,void *l)
 {
 	void * bp;
+	//go through free list
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		if(bp==p)//if we have found the thing
@@ -586,15 +591,16 @@ int searchlist_check(void*p,void *l)
 	return 0;
 }
 
-//Is every free block actually in the free list
-int allfreeinfl_check(void *l)
+//Is every free block is actually present in the free list
+int flCorrectnessCheck(void *l)
 {
 	void *bp;
 	void *end = mem_heap_hi()- WSIZE + 1;//points to last word
+	//go through memory
 	for(bp = mem_heap_lo() + DSIZE;bp<end;bp+=GET_SIZE(HDRP(bp)))
 	{
 		//if the block is not allocated, but you cannot find it in the free list
-		if(GET_ALLOC(HDRP(bp))==0 && searchlist_check(bp,fl)==0)
+		if(GET_ALLOC(HDRP(bp))==0 && searchlist_check(bp,l)==0)
 			return 0;
 	}
 	return 1;
@@ -616,35 +622,40 @@ int searchmem_check(void*bp)
 }
 
 //Check if all free list's pointers are in memory
-int allflinmem_check(void *l)
+int flValidPointersCheck(void *l)
 {
 	void * bp;
 	//For each element in free list
 	for(bp=l;bp!=NULL;bp=GetNext(bp))
 	{
 		//if we cannot find this bp memory
+		//then free list pointer is wrong. Corrupt free list, return fail
 		if(searchmem_check(bp)==0)
 			return 0;
 	}
 	return 1;
 }
 
+//flSizeRangeCheck
+
+
 //print one check
 void printCheck(char*c,int b)
 {
-	printf("CHEKKA %s? %i\n",c,b); P("");
+	printf("\n%i CHEKKA: %s?",b,c); P("");
 }
 //print all checks
-void heap_chekka(void* l)
+void heapChekka(void* l)
 {
-	printCheck("1. Do pointers in heap block point to valid heap addresses",	freelistbounds_check(l));
-	printCheck("2. Is every block in the free list marked as free", freelist_check(l));
-	printCheck("3. Do pointers in free list point to valid free blocks", allflinmem_check(l));
+	printCheck("1. Do pointers in heap block point to valid heap addresses",	flPointerBoundsCheck(l));
+	printCheck("2. Is every block in the free list marked as free", flAllFreeCheck(l));
+	printCheck("3. Do pointers in free list point to valid free blocks", flValidPointersCheck(l));
 	printCheck("4. Are blocks are coalesced properly",coalescing_check(l));
-	printCheck("5. Is every free block actually in the free list" ,allfreeinfl_check(l));
+	printCheck("5. Is every free block actually in the free list" ,flCorrectnessCheck(l));
 	printf("\n\n\n");P("");
 	
 }
+
 
 
 
