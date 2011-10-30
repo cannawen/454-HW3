@@ -84,8 +84,8 @@ Get returns value*/
 #define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
-#define RUN_ON_INSN 10
-#define DEBUG 1
+#define RUN_ON_INSN 1
+#define DEBUG 0
 #define SANITY_CHECK 1
 #define NUM_FREE_LISTS 7
 
@@ -94,7 +94,6 @@ Get returns value*/
  * This data has to be kept < 128 bytes
 *************************************************************************/
 void* epilogue = NULL;
-void* fl=NULL;
 void* fls[NUM_FREE_LISTS];
 size_t limits[NUM_FREE_LISTS];
 int counter;
@@ -135,26 +134,28 @@ void mm_check()
 {
 	int i;
 	for (i = 0; i < NUM_FREE_LISTS; ++i)
+	{
 		run_check(fls[i]); //Run sanity check for every free list we have.
+	}
 }
 void heapCheckCounter(char* c)
 {
 	counter++;
 	if(DEBUG) {
-		//printf("(%s%i)",c,counter); P("");
+		printf("(%s%i)",c,counter); P("");
 		
 		if(counter==RUN_ON_INSN)
 		{
 			itr++;
 			if(itr==1)
 			{
-				heapChekka(fl);
+				mm_check();
 			}
 			if(itr==12)
 				itr=0;
 		}
 	}
-	else if(SANITY_CHECK)
+	if(SANITY_CHECK)
 	{
 		if(counter%1000==0)
 		{
@@ -181,11 +182,10 @@ void heapCheckCounter(char* c)
 	if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
     	return -1;
     PUT(heap_listp, 0);                         // alignment padding 
-    PUT(heap_listp+WSIZE, PACK(ALLOC_OVERHEAD, 1, 1));   // prologue header
-	PUT(heap_listp+DSIZE, PACK(0, 1, 1));    // epilogue header
+    PUT(heap_listp+WSIZE, PACK(ALIGNMENT, 1, 1));   // prologue header
+	PUT(heap_listp+DSIZE+WSIZE, PACK(0, 1, 1));    // epilogue header
 	
-	epilogue = heap_listp+DSIZE+WSIZE;
-	//fl=NULL;
+	epilogue = heap_listp+DSIZE+DSIZE;
 	limit = 16;
 	for (list = 0; list < NUM_FREE_LISTS; ++list)
 	{
@@ -193,6 +193,7 @@ void heapCheckCounter(char* c)
 		limits[list] = limit + ALLOC_OVERHEAD;
 		limit = limit << 1;
 	}
+	limits[list - 1] = -1;
 	counter=0;
 	return 0;
  }
@@ -315,16 +316,6 @@ void *coalesce(void *bp)
     }
     
 	add_to_free_list(bp);
-	return bp;
-}
-
-
-void *removend(void*bp)
-{
-	if(bp==fl)
-		fl=NULL;
-	else
-		SetNext(GetPrev(bp),NULL);
 	return bp;
 }
 
@@ -591,9 +582,10 @@ int searchlist_check(void*p,void *l)
 	return 0;
 }
 
-//Is every free block is actually present in the free list
+//Is every free block actually present in the free list
 int flCorrectnessCheck(void *l)
 {
+	return 1;
 	void *bp;
 	void *end = mem_heap_hi()- WSIZE + 1;//points to last word
 	//go through memory
