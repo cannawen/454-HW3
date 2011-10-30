@@ -131,32 +131,29 @@ void C(char* c)
 {
 	counter++;
 	if(DEBUG) {
-		printf("(%s%i)",c,counter);
-		P("");
+		//printf("(%s%i)",c,counter); P("");
 		
 		if(counter==RUN_HEAP_CHEKKA_ON_INSN)
 		{
-			if(itr==11)
+			itr++;
+			if(itr==1)
 			{
 				heap_chekka(fl);
-				itr=0;
 			}
-			else
-				itr++;
+			if(itr==12)
+				itr=0;
 		}
 	}
 	else if(SANITY_CHECK)
 	{
-		if(itr==11)
+		if(counter%1000==0)
 		{
-			if(counter%1000==0)
-			{
-				mm_check();
-			}
-			itr=0;
-		}
-		else
 			itr++;
+			if(itr==1)
+				mm_check();
+			if(itr==12)
+				itr=0;
+		}
 	}
 }
 
@@ -635,7 +632,7 @@ int allflinmem_check(void *l)
 //print one check
 void printCheck(char*c,int b)
 {
-	printf("CHEKKA %s? %i\n",c,b); P("");
+	printf("\n%i CHEKKA: %s?",b,c); P("");
 }
 //print all checks
 void heap_chekka(void* l)
