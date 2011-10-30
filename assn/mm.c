@@ -489,20 +489,29 @@ void *mm_malloc(size_t size)
 void *mm_realloc(void *ptr, size_t size)
 {
     heapCheckCounter("r");
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
+	
+	//check what size the block actually is
+	size_t block_size = GET_SIZE(HDRP(ptr));
+	size_t new_size = (size + ALLOC_OVERHEAD + ALIGNMENT -1) / ALIGNMENT * ALIGNMENT;
+	//if the allocated size is enough to fit what the user wants
+	if(new_size <= block_size)
+		return ptr;//they can still use the same memory
+	
+	void *newptr;
     
-    newptr = mm_malloc(size);
+	//We must allocate more memory!
+	//Twice as much, since if it was realloced once,
+	//it's likely to be realloced again.
+	newptr=mm_malloc(new_size*2);
+	
+	//if malloc failed, return NULL
     if (newptr == NULL)
-      return NULL;
-
-    copySize = GET_SIZE(HDRP(oldptr));
-    if (size < copySize)
-      copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
+    	return NULL;	
+	
+	//copy stuff from old ptr to new ptr
+	memcpy(newptr,ptr,new_size);
+	mm_free(ptr);
+	return newptr;
 }
 
 
