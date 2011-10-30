@@ -351,7 +351,18 @@ void *extend_heap(size_t words)
     size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;	
 	if ( (bp = mem_sbrk(size)) == NULL )
         return NULL;
-
+	
+	// Only extend in amounts that fit perfectly into a free list
+//	int i;
+/*	for (i = 0; i < NUM_FREE_LISTS; ++i)
+	{
+		if (size <= limits[i])
+		{
+			size = limits[i];
+			break;
+		}
+	}
+*/
     /* Initialize free block header/footer and the epilogue header */
 	unsigned int prev = GET_PREV(HDRP(epilogue));
 	PUT(HDRP(bp), PACK(size, 0, prev));                // free block header
