@@ -96,14 +96,16 @@ int itr=0;
 
 void F(char*c,int b);
 void heapChekka(void* l);
-int coalescing_check(void* l);
+int coalescingCheck(void* l);
 void printCheck(char*c,int b);
 int flValidPointersCheck(void *l);
 int searchmem_check(void*bp);
-int flCorrectnessCheck(void *l);
-int searchlist_check(void*p,void *l);
+int flCorrectnessCheck(void **l);
+int searchlist_check(void*p,void **l);
 int flAllFreeCheck(void* l);
 int flPointerBoundsCheck(void *l);
+int flSizeRangeCheck(void *l, int min, int max);
+
 
 void P(char *c)
 {
@@ -114,11 +116,15 @@ void P(char *c)
 //This runs a check for one free list, l.
 void run_check(void* l)
 {
+	//Add to test if size ranges are correct:
+	//USAGE: assert(flSizeRangeCheck(l,min,max));
+	//you can figure out how to get min/max in here :P
+	//probably pass it into the function via the for loop in mm_check
 	assert(flPointerBoundsCheck(l));
 	assert(flAllFreeCheck(l));
 	assert(flValidPointersCheck(l));
-	assert(coalescing_check(l));
-	assert(flCorrectnessCheck(l));
+	assert(coalescingCheck(l));
+	//assert(flCorrectnessCheck(l)); This is now moved to mm_check
 }
 //This heap-checks all of our free lists
 void mm_check()
@@ -126,6 +132,11 @@ void mm_check()
 	run_check(fl); //Run sanity check for every free list we have.
 	//run_check(fl2);
 	//run_check(f3); ... etc.
+	
+	//NEW USAGE, add to this function:
+	//flCorrectnessCheck(void ** fl)
+	//Passed in an array of void pointers
+	//do not include in above for loop
 }
 void heapCheckCounter(char* c)
 {
@@ -556,7 +567,8 @@ int flAllFreeCheck(void* l)
 
 //Are blocks are coalesced properly
 //Assumes free list is completely correct.
-int coalescing_check(void* l)
+//Does not assume block sizing is correct
+int coalescingCheck(void* l)
 {	
 	void * bp;
 	//Go through free list
@@ -572,20 +584,26 @@ int coalescing_check(void* l)
 }
 
 //Find if this bp is in free list
-int searchlist_check(void*p,void *l)
+int searchlist_check(void*p,void **l)
 {
+	int i;
 	void * bp;
-	//go through free list
-	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	for(i=0;i<NUM_FREE_LISTS;i++)/*NUM_FREE_LISTS==8*/
 	{
-		if(bp==p)//if we have found the thing
-			return 1;//you done something wrong
+		for(bp=l[i];bp!=NULL;bp=GetNext(bp))
+		{
+			if(bp==p)//if we have found the thing
+				return 1;//you done something wrong
+		}
 	}
+
+	//go through free list
+
 	return 0;
 }
 
-//Is every free block is actually present in the free list
-int flCorrectnessCheck(void *l)
+//Is every free block is actually present in a free list
+int flCorrectnessCheck(void **flp)
 {
 	void *bp;
 	void *end = mem_heap_hi()- WSIZE + 1;//points to last word
@@ -593,7 +611,7 @@ int flCorrectnessCheck(void *l)
 	for(bp = mem_heap_lo() + DSIZE;bp<end;bp+=GET_SIZE(HDRP(bp)))
 	{
 		//if the block is not allocated, but you cannot find it in the free list
-		if(GET_ALLOC(HDRP(bp))==0 && searchlist_check(bp,l)==0)
+		if(GET_ALLOC(HDRP(bp))==0 && searchlist_check(bp,flp)==0)
 			return 0;
 	}
 	return 1;
@@ -629,7 +647,24 @@ int flValidPointersCheck(void *l)
 	return 1;
 }
 
-//flSizeRangeCheck
+//check that all sizes within free list are in between min and max.
+//max=-1 means there is no max
+int flSizeRangeCheck(void *l, int min, int max)
+{
+	void*bp;
+	int size;
+	//go through list l
+	for(bp=l;bp!=NULL;bp=GetNext(bp))
+	{
+		size=GET_SIZE(HDRP(bp));
+		//if (size of block is smaller than min)
+		//OR (there is a max AND we are too big)
+		//then this is bad. Return 0
+		if(size<min || ( (max!=-1) && (size > max) ) )
+			return 0;
+	}
+	return 1;
+}
 
 
 //print one check
@@ -643,7 +678,7 @@ void heapChekka(void* l)
 	printCheck("1. Do pointers in heap block point to valid heap addresses",	flPointerBoundsCheck(l));
 	printCheck("2. Is every block in the free list marked as free", flAllFreeCheck(l));
 	printCheck("3. Do pointers in free list point to valid free blocks", flValidPointersCheck(l));
-	printCheck("4. Are blocks are coalesced properly",coalescing_check(l));
+	printCheck("4. Are blocks are coalesced properly",coalescingCheck(l));
 	printCheck("5. Is every free block actually in the free list" ,flCorrectnessCheck(l));
 	printf("\n\n\n");P("");
 	
