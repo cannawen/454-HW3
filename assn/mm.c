@@ -1,6 +1,7 @@
 /*
  * ECE454 Assignment 3
  * Joe Garvey and Canna Wen
+ *
  * Our memory implementation is a variant on simple segregated free lists that combines some elements from segregated best fit.
  * We use NUM_FREE_LISTS segregated lists to store free blocks.
  * Each free list has a size limit corresponding to a power of 2, rounded up for overhead and alignment.
@@ -11,11 +12,14 @@
  * Allocates are only done in powers of 2 (rounded up for overhead and alignment) except for requests large enough to use blocks from the last list.
  * Splitting of free blocks is only performed on blocks that fit in the largest list and only if the result would still belong in the largest list. 
  * Whenever a block is freed it is coalesced with any free neighbours (who are removed from their free lists) and it is added to the appropriate free list.
+ * The free lists operate as LIFO queues.
  * Reallocs are handled with a simple malloc and free unless the block being realloced is at the end of the heap.
  * If this is the case, the heap is extended and the extra space is appended to that block.  That way no memory needs to be copied.
  * Free blocks have a 4B header and a 4B footer which are identical and contain the following information: 
  * the size of the block, whether or not the block is allocated, and whether or not the previous block (physically) is allocated.
- * Allocated blocks have headers that are the same as free blocks but they do not have footers 
+ * Allocated blocks have headers that are the same as free blocks but they do not have footers.
+ * This extra space is rarely used due to the nature of the power of 2 rounding,
+ * but it was left this way because tests showed no improvement when using this extra word.
  */
 
 #include <stdio.h>
@@ -161,6 +165,7 @@ void run_check(void* l, size_t max, size_t min)
 }
 
 //This heap-checks all of our free lists
+//If a check fails the program dies because something is wrong and we should fix it
 void mm_check()
 {
 	int i;
@@ -198,9 +203,14 @@ void heapCheckCounter(char* c)
 }
 
 /**********************************************************
+ * Main functions
+ **********************************************************/
+
+/**********************************************************
  * mm_init
  * Initialize the heap, including "allocation" of the
  * prologue and epilogue
+ * Also initializes the free list pointers and the free list limits
  **********************************************************/
  int mm_init(void)
  {
@@ -212,14 +222,16 @@ void heapCheckCounter(char* c)
     	return -1;
     PUT(heap_listp, 0);                         // alignment padding 
 	// prologue header
-	// The prologue doesn't need a footer (because it's an allocated block
+	// The prologue doesn't need a footer (because it's an allocated block)
+	// But it still needs to be aligned
 	PUT(heap_listp+WSIZE, PACK(ALIGNMENT, 1, 1));   // prologue header
 	PUT(heap_listp+DSIZE+WSIZE, PACK(0, 1, 1));    // epilogue header
-	
+
+	// This pointer makes some work easier later (such as reallocing)	
 	epilogue = heap_listp+DSIZE+DSIZE;
-	limit = 16;
 	
-	//initialize free lists and limits
+	// Initialize free lists and limits
+	limit = 16;
 	for (list = 0; list < NUM_FREE_LISTS; ++list)
 	{
 		fls[list] = NULL;
@@ -235,9 +247,11 @@ void heapCheckCounter(char* c)
 	itr++;
 	return 0;
  }
- 
-// Assumes the block has already been marked as free
-// and that its header and footer are set up appropriately
+
+// Adds the block pointed to by bp to the head of the appropriate free list
+// Assumes the block has already been marked as free,
+// that its header and footer are set up appropriately, 
+// and that the prev bit of the next physical block is handled elsewhere
 void add_to_free_list(void *bp)
 {
 	int list;
@@ -269,11 +283,16 @@ void add_to_free_list(void *bp)
 	fls[list]=bp;//Add block to head of free list
 }
 
+// Removes the block pointed to by bp from its free list
+// by changing the prev and next block pointers
+// Does not mark the block as allocated
+// Does not change the prev bit of the next physical block
 void remove_from_free_list(void* bp)
 {
-	// Remove the next block from its free list
+	// Get the blocks immediately before and after this one in the list
 	void * y = GetPrev(bp);
 	void * z = GetNext(bp);
+
 	if (y == NULL)
 	{
 		// This was the first block in its free list
@@ -288,6 +307,7 @@ void remove_from_free_list(void* bp)
 			}
 		}
 		assert(list != -1);
+		// Make the next block the new head of the list
 		fls[list] = z;
 	}
 	else
@@ -307,6 +327,9 @@ void remove_from_free_list(void* bp)
  * - the next block is available for coalescing
  * - the previous block is available for coalescing
  * - both neighbours are available for coalescing
+ * Removes the neighbouring free blocks from their lists
+ * Combines the blocks
+ * Adds the new block to the free list
  **********************************************************/
 void *coalesce(void *bp)
 {
@@ -314,7 +337,7 @@ void *coalesce(void *bp)
 	size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
 	size_t size = GET_SIZE(HDRP(bp));
 	
-	//Nothing special to do for case 1
+	//Nothing special to do for case 1 (both prev and next allocated)
 	if (prev_alloc &&!next_alloc)
     { /* Case 2 faFfaf*/
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
@@ -351,6 +374,7 @@ void *coalesce(void *bp)
 	return bp;
 }
 
+// Nifty round up to the next power of two without loops/ifs
 unsigned int round_up_to_next_power_of_two(unsigned int size)
 {
 	size--;
@@ -368,6 +392,7 @@ unsigned int round_up_to_next_power_of_two(unsigned int size)
  * Extend the heap by "words" words, maintaining alignment
  * requirements of course. Free the former epilogue block
  * and reallocate its new header
+ * Coalesce the new free block (i.e. add it to the free list)
  **********************************************************/
 void *extend_heap(size_t words)
 {
@@ -385,6 +410,7 @@ void *extend_heap(size_t words)
     PUT(FTRP(bp), PACK(size, 0, prev));                // free block footer
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1, 0));        // new epilogue header
 
+	// Update the epilogue pointer
 	epilogue = NEXT_BLKP(bp);
 	
 	/* Coalesce if the previous block was free */
@@ -394,9 +420,11 @@ void *extend_heap(size_t words)
 
 /**********************************************************
  * find_fit
- * Traverse the heap searching for a block to fit asize
+ * Traverse the appropriate free list to find a block of size asize
+ * If none is found search the next largest free list
+ * Continue this until a block is found or we're out of free lists
+ * If a block is found return a pointer to it
  * Return NULL if no free blocks can handle that size
- * Assumed that asize is aligned
  **********************************************************/
 void * find_fit(size_t asize) 
 {
@@ -413,14 +441,15 @@ void * find_fit(size_t asize)
 	if (list == NUM_FREE_LISTS)
 		--list;
 
+	// Search through all free lists starting at the one determined above
     while (list < NUM_FREE_LISTS)
 	{
 		for (bp = fls[list]; bp!=NULL; bp = GetNext(bp))//Go through the free list
 		{
-			//If a block is not allocated, and the size fits
+			//If a block fits
 			if ((asize <= GET_SIZE(HDRP(bp))))
 			{
-				assert(!GET_ALLOC(HDRP(bp)));
+				assert(!GET_ALLOC(HDRP(bp))); // Shouldn't be in the free list if allocated
 				return bp;
 			}
 		}
@@ -432,6 +461,9 @@ void * find_fit(size_t asize)
 
 // Splits a free block (bp) into two pieces.
 // Return a pointer to the second peice (bp will still be valid and will point to the first peice)
+// Assumes the initial block is free
+// Both newly produced blocks are still free
+// Does not touch the free lists (caller must deal with them)
 void *split(void *bp, size_t size)
 {
 	void * new_block;
@@ -454,7 +486,10 @@ void *split(void *bp, size_t size)
 
 /**********************************************************
  * place
+ * Remove a block from its free list
+ * Split the block if it's large adding the extra back to a free list
  * Mark the block as allocated
+ * Update the prev allocated bit of the next physical block
  **********************************************************/
 void place(void* bp, size_t asize)
 {
@@ -486,9 +521,12 @@ void place(void* bp, size_t asize)
 
 
 // Mark the block as free and set up header and footer
+// Update the prev bit of the next physical block
+// Does not touch the free lists (caller must handle that)
 void mark_free(void *bp)
 {
-    size_t size = GET_SIZE(HDRP(bp));
+    // Update the block
+	size_t size = GET_SIZE(HDRP(bp));
     unsigned int prev = GET_PREV(HDRP(bp));
 	PUT(HDRP(bp), PACK(size,0,prev));
     PUT(FTRP(bp), PACK(size,0,prev));
@@ -498,6 +536,7 @@ void mark_free(void *bp)
 	size_t next_size = GET_SIZE(HDRP(next));
 	unsigned int next_alloc = GET_ALLOC(HDRP(next));
 	PUT(HDRP(next), PACK(next_size,next_alloc,0));
+	// If it has a footer, update it
 	if (next_alloc == 0 && next_size > 0)
 		PUT(FTRP(next), PACK(GET_SIZE(HDRP(next)),GET_ALLOC(HDRP(next)),0));
 }
@@ -533,10 +572,14 @@ void *mm_malloc(size_t size)
 	size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
-    /* Ignore spurious requests */
+    
+	/* Ignore spurious requests */
     if (size <= 0)
         return NULL;
 
+	// Unless the size would result in us using the biggest free list,
+	// round up to the next power of 2
+	// This reduces fragmentation by semi-standardizing block sizes
 	if (size <= limits[NUM_FREE_LISTS - 2])
 	{
 		size = round_up_to_next_power_of_two(size);    
@@ -568,6 +611,9 @@ void *mm_malloc(size_t size)
 
 /**********************************************************
  * mm_realloc
+ * Use a simple malloc, copy, and free approach unless the block being realloced is at the end of the heap.
+ * If this is the case, the heap is extended and the extra space is appended to that block.  That way no memory needs to be copied.
+ * If the block is already big enough that it doesn't need to be resized, don't bother resizing it
  *********************************************************/
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -580,6 +626,7 @@ void *mm_realloc(void *ptr, size_t size)
 
 	//check what size the block actually is
 	size_t block_size = GET_SIZE(HDRP(ptr));
+	// Determine what size is needed
 	size_t new_size = (size + ALLOC_OVERHEAD + ALIGNMENT -1) / ALIGNMENT * ALIGNMENT;
 	//if the allocated size is enough to fit what the user wants
 	if(new_size <= block_size)
@@ -607,8 +654,6 @@ void *mm_realloc(void *ptr, size_t size)
 	else
 	{
 		//We must allocate more memory!
-		//A lot more, since if it was realloced once,
-		//it's likely to be realloced again.
 		newptr=mm_malloc(new_size);
 	
 		//if malloc failed, return NULL
