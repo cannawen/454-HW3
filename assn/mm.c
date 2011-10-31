@@ -1,13 +1,23 @@
 /*
- * This implementation replicates the implicit list implementation
- * provided in the textbook
- * "Computer Systems - A Programmer's Perspective"
- * Blocks are never coalesced or reused. 
- * Realloc is implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * ECE454 Assignment 3
+ * Joe Garvey and Canna Wen
+ * Our memory implementation is a variant on simple segregated free lists that combines some elements from segregated best fit.
+ * We use NUM_FREE_LISTS segregated lists to store free blocks.
+ * Each free list has a size limit corresponding to a power of 2, rounded up for overhead and alignment.
+ * For example, the first list hold blocks up to 32B in size, the next list holds block up to 40B, the next 72B etc.
+ * The last list holds all blocks too large to fit in any of the other lists.
+ * When malloc is called, the first available block is chosen from the appropriately sized list.
+ * If that list is empty, the next largest list is used.
+ * Allocates are only done in powers of 2 (rounded up for overhead and alignment) except for requests large enough to use blocks from the last list.
+ * Splitting of free blocks is only performed on blocks that fit in the largest list and only if the result would still belong in the largest list. 
+ * Whenever a block is freed it is coalesced with any free neighbours (who are removed from their free lists) and it is added to the appropriate free list.
+ * Reallocs are handled with a simple malloc and free unless the block being realloced is at the end of the heap.
+ * If this is the case, the heap is extended and the extra space is appended to that block.  That way no memory needs to be copied.
+ * Free blocks have a 4B header and a 4B footer which are identical and contain the following information: 
+ * the size of the block, whether or not the block is allocated, and whether or not the previous block (physically) is allocated.
+ * Allocated blocks have headers that are the same as free blocks but they do not have footers 
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -83,21 +93,32 @@ team_t team = {
 #define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
-#define RUN_ON_INSN 10
+/* The number of segregated free lists.  This should be >= 2 or else some code breaks.*/
 #define NUM_FREE_LISTS 7
+
+/* Various debug related constants
+ * DEBUG causes statements to be printed with every malloc/free/realloc
+ * It also causes the heap checker to be called on call # RUN_ON_INSN
+ * SANITY causes the heap checker to be run every HEAP_CHECK_PERIOD calls.
+ */ 
 #define DEBUG 0
+#define RUN_ON_INSN 10
 #define SANITY 0
+#define HEAP_CHECK_PERIOD 1000
 
 /*************************************************************************
  * Globals 
  * This data has to be kept < 128 bytes
+ * Currently it uses 96B
+ * However, 36B of that is for debug so it could be removed if necessary
+ * and the epilogue pointer is really only for convenience (it can be computed from mem_heap_hi)
 *************************************************************************/
-void* epilogue = NULL;
-void* fls[NUM_FREE_LISTS];
-size_t limits[NUM_FREE_LISTS];
-int counter;//For debug
-int itr=0;//For debug
-int number_of_items[NUM_FREE_LISTS];//For debug
+void* epilogue = NULL; // 4B
+void* fls[NUM_FREE_LISTS]; // 7 * 4 = 28B
+size_t limits[NUM_FREE_LISTS]; // 7 * 4 = 28B
+int counter;//For debug 4B
+int itr=0;//For debug 4B
+int number_of_items[NUM_FREE_LISTS];//For debug 7 * 4 = 28B
 
 /*************************************************************************
  * Function prototypes
@@ -122,8 +143,7 @@ int* flCountsCheck(void ** l);
  * and asserting that our program passes the tests
  * (Only run when DEBUG or SANITY_CHECK are on)
 *************************************************************************/
-
-
+// Prints a character then flushes stdout in case there's a seg fault
 void printFlush(char *c)
 {
 	printf("%s",c);	
@@ -154,11 +174,12 @@ void mm_check()
 }
 
 //This function runs when debug or sanity check are on
+//It performs the behaviour described above for the DEBUG and SANITY flags
 void heapCheckCounter(char* c)
 {
 	counter++;
-//debug: run on RUN_ON_INSN only
-#if DEBUG
+	
+	//debug: run on RUN_ON_INSN only
 	printf("(%s%i)",c,counter); printFlush("");
 	if(counter==RUN_ON_INSN)
 	{
@@ -166,19 +187,15 @@ void heapCheckCounter(char* c)
 		if(itr%12==1)
 			mm_check();
 	}
-#endif
-//sanity: run every 1000 insns
-#if SANITY
-	if(counter%1000==0)
+	
+	//sanity: run every HEAP_CHECK_PERIOD insns
+	if(counter%HEAP_CHECK_PERIOD==0)
 	{
 		//only run once for each test
 		if(itr%12==1)
 			mm_check();
 	}
-#endif
 }
-
-
 
 /**********************************************************
  * mm_init
@@ -194,7 +211,9 @@ void heapCheckCounter(char* c)
 	if ((heap_listp = mem_sbrk(4*WSIZE)) == NULL)
     	return -1;
     PUT(heap_listp, 0);                         // alignment padding 
-    PUT(heap_listp+WSIZE, PACK(ALIGNMENT, 1, 1));   // prologue header
+	// prologue header
+	// The prologue doesn't need a footer (because it's an allocated block
+	PUT(heap_listp+WSIZE, PACK(ALIGNMENT, 1, 1));   // prologue header
 	PUT(heap_listp+DSIZE+WSIZE, PACK(0, 1, 1));    // epilogue header
 	
 	epilogue = heap_listp+DSIZE+DSIZE;
