@@ -76,18 +76,17 @@ team_t team = {
 /*Address of next and previous pointers, given a bp*/
 #define NEXTP(bp) HDRP(bp)+4
 #define PREVP(bp) HDRP(bp)+8
-/*Getting and setting values of next and previous locations
-bp: pointer
-Get returns value*/
+
+/*Getting and setting values of next and previous of linked list*/
 #define GetNext(bp) (void *)(GET(NEXTP(bp)))
 #define GetPrev(bp) (void *)(GET(PREVP(bp)))
 #define SetNext(bp,val) PUT(NEXTP(bp),(size_t)val)
 #define SetPrev(bp,val) PUT(PREVP(bp),(size_t)val)
 
 #define RUN_ON_INSN 10
-#define DEBUG 0
-#define SANITY_CHECK 1
 #define NUM_FREE_LISTS 7
+#define DEBUG 0
+#define SANITY 0
 
 /*************************************************************************
  * Globals 
@@ -96,9 +95,9 @@ Get returns value*/
 void* epilogue = NULL;
 void* fls[NUM_FREE_LISTS];
 size_t limits[NUM_FREE_LISTS];
-int counter;
-int itr=0;
-int num[NUM_FREE_LISTS];//NUM_FREE_LISTS
+int counter;//For debug
+int itr=0;//For debug
+int number_of_items[NUM_FREE_LISTS];//For debug
 
 /*************************************************************************
  * Function prototypes
@@ -117,9 +116,17 @@ int flPointerBoundsCheck(void *l);
 int flSizeRangeCheck(void *l, int min, int max);
 int* flCountsCheck(void ** l);
 
-void P(char *c)
+/*************************************************************************
+ * Debugging Functions
+ * These help with debugging our program, running our heap checker
+ * and asserting that our program passes the tests
+ * (Only run when DEBUG or SANITY_CHECK are on)
+*************************************************************************/
+
+
+void printFlush(char *c)
 {
-	if(DEBUG) {printf("%s",c);}
+	printf("%s",c);	
 	fflush(stdout);
 }
 
@@ -142,29 +149,36 @@ void mm_check()
 		 //Run sanity check for every free list we have.
 		run_check(fls[i], limits[i], i>0?limits[i-1]:0);
 	}
-	flCorrectnessCheck(fls);
+	//Correctness test takes an array of free lists
+	assert(flCorrectnessCheck(fls));
 }
+
+//This function runs when debug or sanity check are on
 void heapCheckCounter(char* c)
 {
 	counter++;
-	if(DEBUG) 
+//debug: run on RUN_ON_INSN only
+#if DEBUG
+	printf("(%s%i)",c,counter); printFlush("");
+	if(counter==RUN_ON_INSN)
 	{
-		printf("(%s%i)",c,counter); P("");
-		if(counter==RUN_ON_INSN)
-		{
-			if(itr%12==1)
-				mm_check();
-		}
+		//only run once for each test
+		if(itr%12==1)
+			mm_check();
 	}
-	if(SANITY_CHECK)
+#endif
+//sanity: run every 1000 insns
+#if SANITY
+	if(counter%1000==0)
 	{
-		if(counter%1000==0)
-		{
-			if(itr%12==1)
-				mm_check();
-		}
+		//only run once for each test
+		if(itr%12==1)
+			mm_check();
 	}
+#endif
 }
+
+
 
 /**********************************************************
  * mm_init
@@ -185,13 +199,19 @@ void heapCheckCounter(char* c)
 	
 	epilogue = heap_listp+DSIZE+DSIZE;
 	limit = 16;
+	
+	//initialize free lists and limits
 	for (list = 0; list < NUM_FREE_LISTS; ++list)
 	{
 		fls[list] = NULL;
 		limits[list] = ALIGNMENT * (limit + ALLOC_OVERHEAD + ALIGNMENT - 1)/ALIGNMENT;
 		limit = limit << 1;
 	}
-	limits[list - 1] = -1;
+	
+	//set last limit to -1, meaning there is no upper limit
+	limits[NUM_FREE_LISTS - 1] = -1;
+	
+	//counter and itr are used in debugging
 	counter=0;
 	itr++;
 	return 0;
@@ -275,13 +295,9 @@ void *coalesce(void *bp)
 	size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
 	size_t size = GET_SIZE(HDRP(bp));
 	
-	if (prev_alloc && next_alloc) /*case 1 faFaf */
-	{
-		P("!1!");
-	}
-	else if (prev_alloc &&!next_alloc)
+	//Nothing special to do for case 1
+	if (prev_alloc &&!next_alloc)
     { /* Case 2 faFfaf*/
-		P("!2!");
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         void * nbp=NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(size, 0, 1));
@@ -289,9 +305,8 @@ void *coalesce(void *bp)
 
 		remove_from_free_list(nbp);
     }
-    else if ( next_alloc&&!prev_alloc)
+    else if (next_alloc&&!prev_alloc)
 	{ /* Case 3 fafFaf*/
-		P("!3!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(FTRP(bp), PACK(size, 0, 1));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0, 1));
@@ -299,9 +314,8 @@ void *coalesce(void *bp)
 		remove_from_free_list(PREV_BLKP(bp)); 
 		bp = PREV_BLKP(bp);
     }
-    else
+    else if (!next_alloc&&!prev_alloc)
 	{ /* Case 4 fafFfaf */
-		P("!4!");
         size += GET_SIZE(HDRP(PREV_BLKP(bp)))  +
         	GET_SIZE(FTRP(NEXT_BLKP(bp)))  ;
 	    void * nbp=NEXT_BLKP(bp);
@@ -475,7 +489,9 @@ void mark_free(void *bp)
  **********************************************************/
 void mm_free(void *bp)
 {
+#if DEBUG | SANITY
 	heapCheckCounter("f");
+#endif
 	mark_free(bp);
 	// coalesce calls add_to_free_list
 	coalesce(bp);
@@ -492,7 +508,9 @@ void mm_free(void *bp)
  **********************************************************/
 void *mm_malloc(size_t size)
 {
+#if DEBUG | SANITY
 	heapCheckCounter("m");
+#endif
 	size_t asize; /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char * bp;
@@ -534,9 +552,12 @@ void *mm_malloc(size_t size)
  *********************************************************/
 void *mm_realloc(void *ptr, size_t size)
 {
+#if DEBUG | SANITY
+	heapCheckCounter("r");
+#endif
+
 	size_t difference, extendsize;
 	void * new_bp;
-	heapCheckCounter("r");
 
 	//check what size the block actually is
 	size_t block_size = GET_SIZE(HDRP(ptr));
@@ -600,9 +621,9 @@ void *mm_realloc(void *ptr, size_t size)
 
 
 
-
-
-
+/**********************************************************
+ * Herein lies the almighty HEAP CHEKKA
+ *********************************************************/
 
 
 //Do pointers in free list point to valid heap addresses?
@@ -742,21 +763,21 @@ int* flCountsCheck(void ** l)
 	//for each free list
 	for(i=0;i<NUM_FREE_LISTS;i++)
 	{
-		num[i]=0;
+		number_of_items[i]=0;
 		//go through the list
 		for(bp=l[i];bp!=NULL;bp=GetNext(bp))
 		{
 			//count all the things!
-			num[i]++;
+			number_of_items[i]++;
 		}
 	}
-	return num;
+	return number_of_items;
 }
 
 //print one check
 void printCheck(char*c,int b)
 {
-	printf("\n%i CHEKKA: %s?",b,c); P("");
+	printf("\n%i CHEKKA: %s?",b,c); printFlush("");
 }
 //print all checks
 void heapChekka(void* l)
@@ -766,7 +787,7 @@ void heapChekka(void* l)
 	printCheck("3. Do pointers in free list point to valid free blocks", flValidPointersCheck(l));
 	printCheck("4. Are blocks are coalesced properly",coalescingCheck(l));
 	printCheck("5. Is every free block actually in the free list" ,flCorrectnessCheck(l));
-	printf("\n\n\n");P("");
+	printf("\n\n\n");printFlush("");
 	
 }
 
